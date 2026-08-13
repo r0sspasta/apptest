@@ -29,15 +29,53 @@ renamed or deleted, so you can shape the list to match your own routine.
 - **Add exercises** — the **+ Add exercise** button at the bottom of each day
   adds a new exercise to that day.
 - **Backup** — *Export data* downloads a JSON backup; *Import data* restores it
-  (handy for moving to a new phone).
+  (handy for moving to a new phone). Or set up automatic Google Sheets sync
+  (below) and never think about it.
+
+## Google Sheets sync setup
+
+The tracker can automatically push every set you log to your own Google Sheet —
+long-term history and an off-device backup in one. It syncs a few seconds after
+each change and retries automatically if you're offline at the gym.
+
+One-time setup (about 3 minutes):
+
+1. Go to [sheets.new](https://sheets.new) and create a blank spreadsheet.
+   Name it something like *Gym Tracker*.
+2. In the sheet's menu, open **Extensions → Apps Script**.
+3. Delete the placeholder code and paste in the entire contents of
+   [`google-apps-script/Code.gs`](google-apps-script/Code.gs) from this repo.
+   Hit the 💾 save icon.
+4. Click **Deploy → New deployment**. Click the ⚙️ next to "Select type" and
+   choose **Web app**. Set:
+   - **Execute as:** Me
+   - **Who has access:** Anyone
+5. Click **Deploy**, approve the permissions prompt (Google will warn the app
+   is unverified — click *Advanced → Go to … (unsafe)*; it's your own script
+   reading your own sheet), and copy the **Web app URL** (ends in `/exec`).
+6. In the tracker, tap **Sheets sync** in the bottom bar, paste the URL, and
+   hit **Save & test**. You should see "Connected ✓" and your sheet fills in.
+
+Your sheet gets two tabs, kept up to date on every sync:
+
+- **Workout Log** — one row per set (`Date | Day | Exercise | Set | Weight |
+  Reps | Logged at`), ready for charts or pivot tables.
+- **Backup** — a full JSON snapshot. If you ever lose your phone data, join
+  the backup cells into a `.json` file and restore via **Import data**.
+
+The sync status dot in the bottom bar shows green (synced), amber (pending),
+or red (failed — it retries when you're back online).
+
+Note: the `/exec` URL is unguessable but effectively a "post to my sheet" key —
+anyone you give it to could write rows to your sheet, so don't share it.
 
 ## Data & privacy
 
-Everything is stored in your browser's `localStorage` on your device. Nothing
-leaves your phone. Clearing site data clears your logs, so export a backup now
-and then.
+Your logs live in your browser's `localStorage` on your device, and — if you
+enable sync — in your own Google Sheet. Nothing is sent anywhere else.
 
 ## Running it
 
-Open `index.html` in any browser — or host it anywhere static (GitHub Pages
-works great) and add it to your phone's home screen for gym use.
+The app is deployed with GitHub Pages via `.github/workflows/pages.yml` —
+open the Pages URL on your phone and use "Add to Home Screen" to make it feel
+like an app. You can also just open `index.html` directly in any browser.

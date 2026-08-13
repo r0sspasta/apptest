@@ -217,6 +217,8 @@
     width: 100%; max-width: 640px;
   }
   .modal h2 { font-size: 1rem; margin-bottom: 14px; }
+  .modal-help { font-size: 0.83rem; color: var(--text-dim); margin-bottom: 14px; line-height: 1.5; }
+  .modal-help a { color: var(--accent); }
   .modal input[type="text"] {
     width: 100%;
     background: var(--surface-2);
@@ -240,9 +242,22 @@
     backdrop-filter: blur(8px);
     border-top: 1px solid var(--border);
     padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
-    display: flex; justify-content: center; gap: 24px;
+    display: flex; justify-content: center; align-items: center; gap: 20px;
   }
   footer .link-btn { font-size: 0.78rem; }
+  .sync-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 0.78rem; font-weight: 600;
+    background: none; border: none; cursor: pointer;
+    color: var(--text-dim); padding: 2px 0;
+  }
+  .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); flex: 0 0 auto; }
+  .sync-pill.ok .sync-dot { background: var(--green); }
+  .sync-pill.pending .sync-dot { background: var(--amber); }
+  .sync-pill.error .sync-dot { background: var(--red); }
+  .sync-status-line { font-size: 0.82rem; color: var(--text-dim); margin-bottom: 14px; min-height: 1.2em; }
+  .sync-status-line.ok { color: var(--green); }
+  .sync-status-line.error { color: var(--red); }
 
   .toast {
     position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%) translateY(20px);
@@ -270,6 +285,9 @@
 <main id="main"></main>
 
 <footer>
+  <button class="sync-pill" id="syncPill" title="Google Sheets sync">
+    <span class="sync-dot"></span><span id="syncPillText">Sheets sync</span>
+  </button>
   <button class="link-btn" id="exportBtn">Export data</button>
   <button class="link-btn" id="importBtn">Import data</button>
 </footer>
@@ -281,6 +299,25 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" id="modalCancel">Cancel</button>
       <button class="btn btn-primary" id="modalSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="settingsBackdrop">
+  <div class="modal">
+    <h2>Google Sheets sync</h2>
+    <p class="modal-help">
+      Automatically backs up every set you log to your own Google Sheet.
+      One-time setup: follow the
+      <a href="https://github.com/r0sspasta/apptest#google-sheets-sync-setup" target="_blank" rel="noopener">step-by-step guide</a>,
+      then paste your Apps Script web app URL below.
+    </p>
+    <input type="text" id="sheetsUrlInput" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" spellcheck="false">
+    <div class="sync-status-line" id="settingsSyncStatus"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="settingsClose">Close</button>
+      <button class="btn btn-ghost" id="syncNowBtn">Sync now</button>
+      <button class="btn btn-primary" id="settingsSave">Save &amp; test</button>
     </div>
   </div>
 </div>
@@ -334,14 +371,23 @@
     return `${y}-${m}-${day}`;
   }
 
+  function withDefaults(s) {
+    s.ui = s.ui || {};
+    s.settings = s.settings || {};
+    if (typeof s.settings.sheetsUrl !== 'string') s.settings.sheetsUrl = '';
+    s.syncMeta = s.syncMeta || {};
+    if (typeof s.syncMeta.dirty !== 'boolean') s.syncMeta.dirty = false;
+    if (!('lastSyncTs' in s.syncMeta)) s.syncMeta.lastSyncTs = null;
+    return s;
+  }
+
   function load() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && Array.isArray(parsed.exercises) && Array.isArray(parsed.logs)) {
-          parsed.ui = parsed.ui || {};
-          return parsed;
+          return withDefaults(parsed);
         }
       }
     } catch (e) { /* fall through to fresh state */ }
@@ -351,12 +397,19 @@
         exercises.push({ id: uid(), name, category: cat.id });
       }
     }
-    return { exercises, logs: [], ui: {} };
+    return withDefaults({ exercises, logs: [], ui: {} });
   }
 
   function save() {
     state.ui.activeCat = activeCat;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  // Call after any change to exercises/logs: persists, then queues a Sheets sync.
+  function dataChanged() {
+    state.syncMeta.dirty = true;
+    save();
+    scheduleSync();
   }
 
   // ---------- data helpers ----------
@@ -452,7 +505,7 @@
     addBtn.textContent = '+ Add exercise';
     addBtn.onclick = () => openModal('Add exercise', '', name => {
       state.exercises.push({ id: uid(), name, category: activeCat });
-      save(); render();
+      dataChanged(); render();
       toast(`Added “${name}”`);
     });
     $main.appendChild(addBtn);
@@ -512,7 +565,7 @@
         del.title = 'Delete set';
         del.onclick = () => {
           state.logs = state.logs.filter(l => l.id !== s.id);
-          save(); render();
+          dataChanged(); render();
         };
         chip.appendChild(del);
         wrap.appendChild(chip);
@@ -560,7 +613,7 @@
         date: todayKey(),
         ts: Date.now(),
       });
-      save(); render();
+      dataChanged(); render();
       toast(`Logged ${fmtWeight(weight)} — ${ex.name}`);
     };
     logBtn.onclick = doLog;
@@ -589,7 +642,7 @@
     renameBtn.className = 'link-btn';
     renameBtn.textContent = 'Rename';
     renameBtn.onclick = () => openModal('Rename exercise', ex.name, name => {
-      ex.name = name; save(); render();
+      ex.name = name; dataChanged(); render();
     });
     actions.appendChild(renameBtn);
 
@@ -601,7 +654,7 @@
       if (!confirm(`Delete “${ex.name}”${n ? ` and its ${n} logged set${n === 1 ? '' : 's'}` : ''}?`)) return;
       state.exercises = state.exercises.filter(e => e.id !== ex.id);
       state.logs = state.logs.filter(l => l.exerciseId !== ex.id);
-      save(); render();
+      dataChanged(); render();
     };
     actions.appendChild(delBtn);
 
@@ -675,6 +728,156 @@
     toastTimer = setTimeout(() => $t.classList.remove('show'), 1800);
   }
 
+  // ---------- Google Sheets sync ----------
+  //
+  // POSTs the full log to a Google Apps Script web app bound to the user's own
+  // Sheet (see google-apps-script/Code.gs). The body is a plain string so the
+  // request stays "simple" (no CORS preflight, which Apps Script can't answer).
+
+  let syncTimer = null;
+  let syncInFlight = false;
+  let syncQueued = false;
+  let lastSyncError = null;
+
+  function sheetsUrl() { return (state.settings.sheetsUrl || '').trim(); }
+
+  function scheduleSync() {
+    renderSyncPill();
+    if (!sheetsUrl()) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(syncNow, 4000);
+  }
+
+  function buildSyncPayload() {
+    return JSON.stringify({
+      type: 'sync',
+      exportedAt: new Date().toISOString(),
+      categories: Object.fromEntries(CATEGORIES.map(c => [c.id, c.name])),
+      exercises: state.exercises,
+      logs: state.logs,
+    });
+  }
+
+  async function syncNow() {
+    const url = sheetsUrl();
+    if (!url) return;
+    if (syncInFlight) { syncQueued = true; return; }
+    syncInFlight = true;
+    renderSyncPill('syncing');
+    try {
+      const res = await fetch(url, { method: 'POST', body: buildSyncPayload() });
+      const out = await res.json();
+      if (!out.ok) throw new Error(out.error || 'Sheet script returned an error');
+      state.syncMeta.dirty = false;
+      state.syncMeta.lastSyncTs = Date.now();
+      lastSyncError = null;
+      save();
+    } catch (e) {
+      lastSyncError = (e && e.message) || 'Could not reach the sheet';
+    } finally {
+      syncInFlight = false;
+      renderSyncPill();
+      renderSettingsStatus();
+      if (syncQueued) { syncQueued = false; scheduleSync(); }
+    }
+  }
+
+  async function pingSheet(url) {
+    const res = await fetch(url, { method: 'POST', body: JSON.stringify({ type: 'ping' }) });
+    const out = await res.json();
+    if (!out.ok) throw new Error(out.error || 'Unexpected reply from script');
+    return out;
+  }
+
+  function syncStatus() {
+    if (!sheetsUrl()) return { cls: '', text: 'Sheets sync: off' };
+    if (syncInFlight) return { cls: 'pending', text: 'Syncing…' };
+    if (lastSyncError) return { cls: 'error', text: 'Sync failed — will retry' };
+    if (state.syncMeta.dirty) return { cls: 'pending', text: 'Sync pending…' };
+    if (state.syncMeta.lastSyncTs) {
+      const d = new Date(state.syncMeta.lastSyncTs);
+      const label = todayKey(d) === todayKey()
+        ? d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+        : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+      return { cls: 'ok', text: `Synced ${label}` };
+    }
+    return { cls: '', text: 'Sheets sync: ready' };
+  }
+
+  function renderSyncPill(forceCls) {
+    const pill = document.getElementById('syncPill');
+    const s = forceCls === 'syncing' ? { cls: 'pending', text: 'Syncing…' } : syncStatus();
+    pill.className = 'sync-pill ' + s.cls;
+    document.getElementById('syncPillText').textContent = s.text;
+  }
+
+  // Retry when connectivity returns or the app comes back to the foreground.
+  window.addEventListener('online', () => { if (state.syncMeta.dirty) scheduleSync(); });
+
+  // ---------- settings modal ----------
+
+  const $settingsBackdrop = document.getElementById('settingsBackdrop');
+  const $sheetsUrlInput = document.getElementById('sheetsUrlInput');
+  const $settingsStatus = document.getElementById('settingsSyncStatus');
+
+  function renderSettingsStatus(msg, cls) {
+    if (msg !== undefined) {
+      $settingsStatus.textContent = msg;
+      $settingsStatus.className = 'sync-status-line ' + (cls || '');
+      return;
+    }
+    const s = syncStatus();
+    $settingsStatus.textContent = lastSyncError ? `Last sync failed: ${lastSyncError}` : s.text;
+    $settingsStatus.className = 'sync-status-line ' + (lastSyncError ? 'error' : s.cls);
+  }
+
+  function openSettings() {
+    $sheetsUrlInput.value = state.settings.sheetsUrl || '';
+    renderSettingsStatus();
+    $settingsBackdrop.classList.add('show');
+  }
+  function closeSettings() { $settingsBackdrop.classList.remove('show'); }
+
+  document.getElementById('syncPill').onclick = openSettings;
+  document.getElementById('settingsClose').onclick = closeSettings;
+  $settingsBackdrop.addEventListener('click', e => { if (e.target === $settingsBackdrop) closeSettings(); });
+
+  document.getElementById('settingsSave').onclick = async () => {
+    const url = $sheetsUrlInput.value.trim();
+    if (!url) {
+      state.settings.sheetsUrl = '';
+      lastSyncError = null;
+      save(); renderSyncPill();
+      renderSettingsStatus('Sync turned off.', '');
+      return;
+    }
+    if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(url)) {
+      renderSettingsStatus('That doesn’t look like an Apps Script URL — it should start with https://script.google.com/ and end in /exec.', 'error');
+      return;
+    }
+    renderSettingsStatus('Testing connection…', '');
+    try {
+      const out = await pingSheet(url);
+      state.settings.sheetsUrl = url;
+      state.syncMeta.dirty = true;
+      lastSyncError = null;
+      save();
+      renderSettingsStatus(`Connected to “${out.sheet || 'your sheet'}” ✓ — syncing now…`, 'ok');
+      toast('Google Sheets connected');
+      scheduleSync();
+    } catch (e) {
+      renderSettingsStatus('Couldn’t connect: ' + ((e && e.message) || 'network error') + '. Check the deployment is set to “Anyone” access.', 'error');
+    }
+  };
+
+  document.getElementById('syncNowBtn').onclick = () => {
+    if (!sheetsUrl()) { renderSettingsStatus('Paste your web app URL and hit Save & test first.', 'error'); return; }
+    clearTimeout(syncTimer);
+    state.syncMeta.dirty = true;
+    syncNow();
+    renderSettingsStatus('Syncing…', '');
+  };
+
   // ---------- export / import ----------
 
   document.getElementById('exportBtn').onclick = () => {
@@ -697,9 +900,8 @@
         const parsed = JSON.parse(reader.result);
         if (!parsed || !Array.isArray(parsed.exercises) || !Array.isArray(parsed.logs)) throw new Error('bad format');
         if (!confirm('Replace all current data with the imported backup?')) return;
-        state = parsed;
-        state.ui = state.ui || {};
-        save(); render();
+        state = withDefaults(parsed);
+        dataChanged(); render();
         toast('Data imported');
       } catch (e) {
         alert('That file doesn’t look like a Gym Tracker backup.');
@@ -709,11 +911,18 @@
     reader.readAsText(file);
   };
 
-  // Re-render when the date rolls over while the tab stays open.
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+  // Re-render when the date rolls over while the tab stays open; retry any
+  // pending Sheets sync when the app comes back to the foreground.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    render();
+    if (state.syncMeta.dirty) scheduleSync();
+  });
 
   save();
   render();
+  renderSyncPill();
+  if (state.syncMeta.dirty) scheduleSync();
 })();
 </script>
 </body>
