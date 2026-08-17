@@ -1,5 +1,5 @@
 /* Gym Tracker service worker: offline-first app shell. */
-const CACHE = 'gym-tracker-v1';
+const CACHE = 'gym-tracker-v2';
 const SHELL = [
   './index.html',
   './manifest.webmanifest',
