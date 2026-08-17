@@ -74,6 +74,8 @@
     border-color: var(--accent);
     color: var(--accent);
   }
+  .tab-add { font-size: 1rem; font-weight: 800; padding: 8px 13px; }
+  .cat-actions { display: flex; gap: 14px; margin: -4px 2px 12px; }
 
   main { padding: 14px 14px 0; max-width: 640px; margin: 0 auto; }
 
@@ -287,6 +289,46 @@
   .hist-sets { font-weight: 600; text-align: right; }
   .hist-best { color: var(--amber); }
 
+  .finish-btn {
+    width: 100%; border: none; border-radius: 14px;
+    background: var(--green); color: #06251a;
+    font-size: 1rem; font-weight: 800;
+    padding: 15px; margin-bottom: 14px; cursor: pointer;
+  }
+  .finish-btn:active { filter: brightness(1.1); }
+  .finish-btn.done { background: var(--surface); color: var(--green); border: 1px solid var(--green); }
+
+  .sum-tiles { display: flex; gap: 8px; margin-bottom: 14px; }
+  .sum-tile {
+    flex: 1; background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 11px 8px; text-align: center;
+  }
+  .sum-tile .v { font-size: 1.25rem; font-weight: 800; }
+  .sum-tile .k {
+    font-size: 0.63rem; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text-dim); margin-top: 2px;
+  }
+  .sum-cat {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px;
+    color: var(--text-dim); margin: 14px 0 5px;
+  }
+  .sum-row {
+    display: flex; justify-content: space-between; gap: 10px;
+    font-size: 0.88rem; padding: 6px 0;
+    border-bottom: 1px dashed rgba(44, 49, 61, 0.6);
+  }
+  .sum-row:last-of-type { border-bottom: none; }
+  .sum-row .sets { color: var(--text-dim); text-align: right; white-space: nowrap; }
+  .sum-pr { color: var(--amber); font-weight: 700; }
+  .sum-backup {
+    margin-top: 16px; padding: 11px 12px; border-radius: 10px;
+    font-size: 0.85rem; font-weight: 600; line-height: 1.45;
+    background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text-dim);
+  }
+  .sum-backup.ok { border-color: var(--green); color: var(--green); }
+  .sum-backup.err { border-color: var(--red); color: var(--red); }
+
   .add-ex-btn {
     width: 100%;
     background: none;
@@ -472,6 +514,17 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="finishBackdrop">
+  <div class="modal">
+    <h2 id="finishTitle">Session complete 💪</h2>
+    <div id="finishBody"></div>
+    <div class="modal-actions" style="margin-top:18px">
+      <button class="btn btn-ghost" id="finishClose">Close</button>
+      <button class="btn btn-primary" id="finishBackup">Back up now</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-backdrop" id="prBackdrop">
   <div class="modal">
     <h2>🏆 Personal records</h2>
@@ -533,12 +586,17 @@
 
   const STORAGE_KEY = 'gymTracker.v1';
 
-  const CATEGORIES = [
+  const BASE_CATEGORIES = [
     { id: 'chest-biceps',  name: 'Chest & Biceps' },
     { id: 'shoulders',     name: 'Shoulders' },
     { id: 'back-triceps',  name: 'Back & Triceps' },
     { id: 'abs',           name: 'Abs' },
   ];
+
+  // Built-in gym days plus any custom ones the user has added.
+  function CATS() { return BASE_CATEGORIES.concat(state.customCats || []); }
+  function catById(id) { return CATS().find(c => c.id === id) || null; }
+  function isCustomCat(id) { return (state.customCats || []).some(c => c.id === id); }
 
   const SEED_EXERCISES = {
     'chest-biceps': [
@@ -562,7 +620,7 @@
   // ---------- state ----------
 
   let state = load();
-  let activeCat = state.ui.activeCat || CATEGORIES[0].id;
+  let activeCat = state.ui.activeCat || BASE_CATEGORIES[0].id;
   let openCards = new Set();     // exercise ids with expanded card
   let openHistories = new Set(); // exercise ids with history shown
   let reorderMode = false;       // when true, cards show up/down controls
@@ -580,6 +638,8 @@
     s.settings = s.settings || {};
     if (typeof s.settings.sheetsUrl !== 'string') s.settings.sheetsUrl = '';
     if (s.settings.unit !== 'lb') s.settings.unit = 'kg';
+    if (!Array.isArray(s.customCats)) s.customCats = [];
+    s.sessionsFinished = s.sessionsFinished || {};
     s.syncMeta = s.syncMeta || {};
     if (typeof s.syncMeta.dirty !== 'boolean') s.syncMeta.dirty = false;
     if (!('lastSyncTs' in s.syncMeta)) s.syncMeta.lastSyncTs = null;
@@ -597,7 +657,7 @@
       }
     } catch (e) { /* fall through to fresh state */ }
     const exercises = [];
-    for (const cat of CATEGORIES) {
+    for (const cat of BASE_CATEGORIES) {
       for (const name of SEED_EXERCISES[cat.id]) {
         exercises.push({ id: uid(), name, category: cat.id });
       }
@@ -798,6 +858,7 @@
   const $sessionDate = document.getElementById('sessionDate');
 
   function render() {
+    if (!catById(activeCat)) activeCat = BASE_CATEGORIES[0].id; // group was deleted
     $sessionDate.textContent = new Date().toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
     renderTabs();
     renderDay();
@@ -805,19 +866,57 @@
 
   function renderTabs() {
     $tabs.innerHTML = '';
-    for (const cat of CATEGORIES) {
+    for (const cat of CATS()) {
       const btn = document.createElement('button');
       btn.className = 'tab' + (cat.id === activeCat ? ' active' : '');
       btn.textContent = cat.name;
       btn.onclick = () => { activeCat = cat.id; save(); render(); };
       $tabs.appendChild(btn);
     }
+    const add = document.createElement('button');
+    add.className = 'tab tab-add';
+    add.textContent = '+';
+    add.title = 'Add a muscle group';
+    add.onclick = () => openModal('Add muscle group', '', name => {
+      const cat = { id: 'custom-' + uid(), name };
+      state.customCats.push(cat);
+      activeCat = cat.id;
+      dataChanged(); render();
+      toast(`Added “${name}”`);
+    });
+    $tabs.appendChild(add);
   }
 
   function renderDay() {
     $main.innerHTML = '';
     const exs = state.exercises.filter(e => e.category === activeCat);
-    const cat = CATEGORIES.find(c => c.id === activeCat);
+    const cat = catById(activeCat);
+
+    if (isCustomCat(activeCat)) {
+      const actions = document.createElement('div');
+      actions.className = 'cat-actions';
+      const ren = document.createElement('button');
+      ren.className = 'link-btn';
+      ren.textContent = 'Rename group';
+      ren.onclick = () => openModal('Rename muscle group', cat.name, name => {
+        cat.name = name; dataChanged(); render();
+      });
+      const del = document.createElement('button');
+      del.className = 'link-btn danger';
+      del.textContent = 'Delete group';
+      del.onclick = () => {
+        const n = state.logs.filter(l => exs.some(e => e.id === l.exerciseId)).length;
+        if (!confirm(`Delete “${cat.name}”${exs.length ? ` with its ${exs.length} exercise${exs.length === 1 ? '' : 's'}` : ''}${n ? ` and ${n} logged set${n === 1 ? '' : 's'}` : ''}?`)) return;
+        const ids = new Set(exs.map(e => e.id));
+        state.exercises = state.exercises.filter(e => !ids.has(e.id));
+        state.logs = state.logs.filter(l => !ids.has(l.exerciseId));
+        state.customCats = state.customCats.filter(c => c.id !== activeCat);
+        activeCat = BASE_CATEGORIES[0].id;
+        dataChanged(); render();
+      };
+      actions.appendChild(ren); actions.appendChild(del);
+      $main.appendChild(actions);
+    }
 
     const summary = document.createElement('div');
     summary.className = 'day-summary';
@@ -870,6 +969,18 @@
     }
 
     for (const ex of exs) $main.appendChild(renderCard(ex, lastOrder));
+
+    const sessionSummary = todaySessionSummary();
+    if (sessionSummary) {
+      const fin = document.createElement('button');
+      const done = !!(state.sessionsFinished && state.sessionsFinished[todayKey()]);
+      fin.className = 'finish-btn' + (done ? ' done' : '');
+      fin.textContent = done
+        ? `✓ Session saved — ${sessionSummary.exercises} exercises, ${sessionSummary.sets} sets (view)`
+        : `✓ Finish session — ${sessionSummary.exercises} exercises, ${sessionSummary.sets} sets`;
+      fin.onclick = openFinish;
+      $main.appendChild(fin);
+    }
 
     const addBtn = document.createElement('button');
     addBtn.className = 'add-ex-btn';
@@ -1172,6 +1283,40 @@
     return card;
   }
 
+  // Everything logged today, grouped by gym day, with totals and any PRs set.
+  function todaySessionSummary() {
+    const tk = todayKey();
+    const logs = state.logs.filter(l => l.date === tk);
+    if (!logs.length) return null;
+    const exById = new Map(state.exercises.map(e => [e.id, e]));
+    const byCat = new Map();
+    let sets = 0, volumeKg = 0;
+    const prs = [];
+    for (const cat of CATS()) byCat.set(cat.id, []);
+    const seen = new Set();
+    for (const l of logs) {
+      const ex = exById.get(l.exerciseId);
+      if (!ex) continue;
+      sets++;
+      if (l.reps) volumeKg += l.weight * l.reps;
+      if (!seen.has(ex.id)) {
+        seen.add(ex.id);
+        const exLogs = logs.filter(x => x.exerciseId === ex.id);
+        const arr = byCat.get(ex.category) || [];
+        arr.push({ name: ex.name, sets: exLogs });
+        byCat.set(ex.category, arr);
+        // PR = today's best beats every earlier session's best
+        const todayBest = Math.max(...exLogs.map(x => x.weight));
+        let priorBest = null;
+        for (const x of state.logs) {
+          if (x.exerciseId === ex.id && x.date !== tk && (priorBest === null || x.weight > priorBest)) priorBest = x.weight;
+        }
+        if (priorBest !== null && todayBest > priorBest) prs.push({ name: ex.name, weight: todayBest });
+      }
+    }
+    return { exercises: seen.size, sets, volumeKg, byCat, prs };
+  }
+
   function ordinalSuffix(n) {
     if (n % 100 >= 11 && n % 100 <= 13) return 'th';
     return ['th', 'st', 'nd', 'rd'][n % 10] || 'th';
@@ -1286,6 +1431,81 @@
     return wrap;
   }
 
+  // ---------- finish session ----------
+
+  const $finishBackdrop = document.getElementById('finishBackdrop');
+  document.getElementById('finishClose').onclick = () => $finishBackdrop.classList.remove('show');
+  $finishBackdrop.addEventListener('click', e => { if (e.target === $finishBackdrop) $finishBackdrop.classList.remove('show'); });
+
+  function openFinish() {
+    state.sessionsFinished = state.sessionsFinished || {};
+    state.sessionsFinished[todayKey()] = Date.now();
+    save();
+    renderFinish();
+    $finishBackdrop.classList.add('show');
+    render();
+    // Back up straight away so the session is off-device before you leave.
+    if (sheetsUrl()) { clearTimeout(syncTimer); state.syncMeta.dirty = true; syncNow().then(renderFinishBackup); }
+  }
+
+  function renderFinish() {
+    const s = todaySessionSummary();
+    const body = document.getElementById('finishBody');
+    if (!s) { body.innerHTML = '<div class="pr-empty">Nothing logged today yet.</div>'; return; }
+    const vol = unit() === 'lb' ? s.volumeKg / KG_PER_LB : s.volumeKg;
+    let html = `<div class="sum-tiles">` +
+      `<div class="sum-tile"><div class="v">${s.exercises}</div><div class="k">Exercises</div></div>` +
+      `<div class="sum-tile"><div class="v">${s.sets}</div><div class="k">Sets</div></div>` +
+      `<div class="sum-tile"><div class="v">${Math.round(vol).toLocaleString()}</div><div class="k">${unit()} volume</div></div>` +
+      `</div>`;
+    if (s.prs.length) {
+      html += `<div class="sum-row sum-pr">🏆 New PR${s.prs.length > 1 ? 's' : ''}: ` +
+        s.prs.map(p => `${escapeHtml(p.name)} ${fmtWeight(p.weight)}`).join(' · ') + `</div>`;
+    }
+    for (const cat of CATS()) {
+      const rows = s.byCat.get(cat.id) || [];
+      if (!rows.length) continue;
+      html += `<div class="sum-cat">${cat.name}</div>`;
+      for (const r of rows) {
+        html += `<div class="sum-row"><span>${escapeHtml(r.name)}</span>` +
+          `<span class="sets">${escapeHtml(setsSummary(r.sets))} ${unit()}</span></div>`;
+      }
+    }
+    html += `<div class="sum-backup" id="finishBackupNote"></div>`;
+    body.innerHTML = html;
+    renderFinishBackup();
+  }
+
+  function renderFinishBackup() {
+    const note = document.getElementById('finishBackupNote');
+    if (!note) return;
+    let cls = '', msg;
+    if (!sheetsUrl()) {
+      msg = '💾 Saved on this device. Google Sheets sync isn’t set up — tap “Sheets sync” below to back up automatically, or use Export data.';
+    } else if (syncInFlight) {
+      msg = '⏳ Backing up to your Google Sheet…';
+    } else if (lastSyncError) {
+      cls = 'err';
+      msg = '⚠️ Saved on this device, but the backup to Google Sheets failed (' + lastSyncError + '). It will retry automatically when you’re back online.';
+    } else if (state.syncMeta.lastSyncTs) {
+      cls = 'ok';
+      msg = '✅ Saved on this device and backed up to your Google Sheet at ' +
+        new Date(state.syncMeta.lastSyncTs).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) + '.';
+    } else {
+      msg = '💾 Saved on this device.';
+    }
+    note.className = 'sum-backup ' + cls;
+    note.textContent = msg;
+  }
+
+  document.getElementById('finishBackup').onclick = () => {
+    if (!sheetsUrl()) { $finishBackdrop.classList.remove('show'); openSettings(); return; }
+    clearTimeout(syncTimer);
+    state.syncMeta.dirty = true;
+    renderFinishBackup();
+    syncNow().then(renderFinishBackup);
+  };
+
   // ---------- personal records screen ----------
 
   const $prBackdrop = document.getElementById('prBackdrop');
@@ -1297,7 +1517,7 @@
     const list = document.getElementById('prList');
     list.innerHTML = '';
     let any = false;
-    for (const cat of CATEGORIES) {
+    for (const cat of CATS()) {
       const rows = [];
       for (const ex of state.exercises.filter(e => e.category === cat.id)) {
         const best = allTimeBestKg(ex.id);
@@ -1444,7 +1664,7 @@
     return JSON.stringify({
       type: 'sync',
       exportedAt: new Date().toISOString(),
-      categories: Object.fromEntries(CATEGORIES.map(c => [c.id, c.name])),
+      categories: Object.fromEntries(CATS().map(c => [c.id, c.name])),
       exercises: state.exercises,
       logs: state.logs,
     });

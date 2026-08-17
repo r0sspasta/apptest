@@ -15,6 +15,10 @@ Exercises are organised under four tabs, one per gym day:
 Each day comes pre-seeded with common exercises, and every exercise can be
 renamed or deleted, so you can shape the list to match your own routine.
 
+Need something outside the usual split? The **+** tab adds your own muscle
+group (Legs, Full Body, whatever), which behaves exactly like the built-in
+ones and can be renamed or deleted later.
+
 ## How it works
 
 - **Log between sets** — open an exercise card, type the weight (reps optional)
@@ -39,9 +43,25 @@ renamed or deleted, so you can shape the list to match your own routine.
   nothing is lost switching back and forth.
 - **History** — tap *History* on any card for your last 20 sessions, with your
   all-time best marked ★ and notes shown inline.
+- **Finish session** — one button before you leave the gym: it shows the whole
+  day's work (exercises, sets, total volume, any PRs) across every muscle
+  group you trained, and forces an immediate backup to your Google Sheet so
+  the session is off your phone before you walk out.
 - **Installable & offline** — served over HTTPS it's a full PWA: "Add to Home
   Screen" gives a real app icon, full-screen launch, and offline support via a
   service worker.
+
+## A note on multiple devices
+
+Your logs live in the browser's storage **on the device you logged them on**.
+Two devices (phone and laptop) each keep their own separate history — there is
+no account tying them together.
+
+The Google Sheets sync is a one-way backup: each device pushes its own copy of
+the data to the sheet, replacing what's there. So **log on one device** (your
+phone) and treat everything else as read-only. If you do need to move your
+history between devices, use **Export data** on the old one and **Import data**
+on the new one.
 - **Add exercises** — the **+ Add exercise** button at the bottom of each day
   adds a new exercise to that day.
 - **Backup** — *Export data* downloads a JSON backup; *Import data* restores it
