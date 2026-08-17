@@ -89,24 +89,43 @@
   }
   .reorder-toggle.on { color: var(--accent); }
 
+  .order-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 12px 13px; margin-bottom: 14px;
+  }
+  .order-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 10px; margin-bottom: 9px;
+  }
   .order-label {
     font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.6px;
-    color: var(--text-dim); margin: 0 2px 6px;
+    color: var(--text-dim);
   }
-  .order-strip {
-    display: flex; gap: 6px; overflow-x: auto;
-    margin: 0 0 14px; padding: 0 2px 2px;
-    scrollbar-width: none;
-  }
-  .order-strip::-webkit-scrollbar { display: none; }
+  .order-strip { display: flex; flex-wrap: wrap; gap: 6px; }
   .order-chip {
-    flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
-    background: var(--surface); border: 1px solid var(--border);
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--surface-2); border: 1px solid var(--border);
     border-radius: 999px; padding: 5px 11px;
-    font-size: 0.78rem; font-weight: 600; color: var(--text-dim);
-    white-space: nowrap;
+    font-size: 0.78rem; font-weight: 600; color: var(--text);
   }
-  .order-chip .n { color: var(--accent); font-weight: 800; }
+  .order-chip .n {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 17px; height: 17px; border-radius: 50%;
+    background: var(--accent-soft); color: var(--accent);
+    font-size: 0.68rem; font-weight: 800;
+  }
+  .order-chip .sets { color: var(--text-dim); font-weight: 600; }
+  .match-btn {
+    background: none; border: none; color: var(--accent);
+    font-size: 0.78rem; font-weight: 700; cursor: pointer;
+    white-space: nowrap; padding: 0;
+  }
+  .ex-order-badge {
+    display: inline-block; margin-right: 6px;
+    background: var(--accent-soft); color: var(--accent);
+    border-radius: 5px; padding: 1px 5px;
+    font-size: 0.7rem; font-weight: 800; vertical-align: 1px;
+  }
 
   .reorder-btns { display: flex; gap: 6px; }
   .reorder-btns button {
@@ -644,11 +663,34 @@
       if (cur === undefined || l.ts < cur) firstTs.set(l.exerciseId, l.ts);
     }
     const byId = new Map(exs.map(e => [e.id, e.name]));
-    const names = [...firstTs.entries()]
+    const items = [...firstTs.entries()]
       .sort((a, b) => a[1] - b[1])
-      .map(([id]) => byId.get(id))
-      .filter(Boolean);
-    return names.length ? { date: lastDate, names } : null;
+      .map(([id]) => ({ id, name: byId.get(id) }))
+      .filter(x => x.name);
+    if (!items.length) return null;
+    const posById = new Map(items.map((x, i) => [x.id, i + 1]));
+    return { date: lastDate, items, posById };
+  }
+
+  // Reorder the category's exercises to match the order they were done in
+  // last session; anything not trained that day keeps its relative place
+  // at the end.
+  function applyLastOrder(catId) {
+    const order = lastWorkoutOrder(state.exercises.filter(e => e.category === catId));
+    if (!order) return;
+    const rank = id => order.posById.has(id) ? order.posById.get(id) : Infinity;
+    const sorted = state.exercises
+      .filter(e => e.category === catId)
+      .map((e, i) => ({ e, i }))
+      .sort((a, b) => (rank(a.e.id) - rank(b.e.id)) || (a.i - b.i))
+      .map(x => x.e);
+    // write them back into the slots the category already occupied
+    const next = state.exercises.slice();
+    let k = 0;
+    next.forEach((e, i) => { if (e.category === catId) next[i] = sorted[k++]; });
+    state.exercises = next;
+    dataChanged(); render();
+    toast('Order matched to last session');
   }
 
   // Move an exercise up/down among its category siblings in state.exercises.
@@ -792,19 +834,32 @@
     // The order this muscle group was actually done in, last completed workout.
     const lastOrder = lastWorkoutOrder(exs);
     if (lastOrder && !reorderMode) {
-      const label = document.createElement('div');
-      label.className = 'order-label';
-      label.textContent = `Last ${cat.name} session — order you did them (${fmtDate(lastOrder.date)})`;
-      $main.appendChild(label);
+      const box = document.createElement('div');
+      box.className = 'order-card';
+
+      const head = document.createElement('div');
+      head.className = 'order-head';
+      head.innerHTML = `<span class="order-label">Order you did them last time · ${fmtDate(lastOrder.date)}</span>`;
+      const matchBtn = document.createElement('button');
+      matchBtn.className = 'match-btn';
+      matchBtn.textContent = '↓ Match';
+      matchBtn.title = 'Reorder the cards below to match this order';
+      matchBtn.onclick = () => applyLastOrder(activeCat);
+      head.appendChild(matchBtn);
+      box.appendChild(head);
+
       const strip = document.createElement('div');
       strip.className = 'order-strip';
-      lastOrder.names.forEach((name, i) => {
+      lastOrder.items.forEach((item, i) => {
+        const sets = state.logs.filter(l => l.exerciseId === item.id && l.date === lastOrder.date);
         const chip = document.createElement('span');
         chip.className = 'order-chip';
-        chip.innerHTML = `<span class="n">${i + 1}</span> ${escapeHtml(name)}`;
+        chip.innerHTML = `<span class="n">${i + 1}</span> ${escapeHtml(item.name)}` +
+          (sets.length ? ` <span class="sets">${escapeHtml(setsSummary(sets))}</span>` : '');
         strip.appendChild(chip);
       });
-      $main.appendChild(strip);
+      box.appendChild(strip);
+      $main.appendChild(box);
     }
 
     if (exs.length === 0) {
@@ -814,7 +869,7 @@
       $main.appendChild(empty);
     }
 
-    for (const ex of exs) $main.appendChild(renderCard(ex));
+    for (const ex of exs) $main.appendChild(renderCard(ex, lastOrder));
 
     const addBtn = document.createElement('button');
     addBtn.className = 'add-ex-btn';
@@ -827,9 +882,11 @@
     $main.appendChild(addBtn);
   }
 
-  function renderCard(ex) {
+  function renderCard(ex, lastOrder) {
     const card = document.createElement('div');
     card.className = 'card' + (openCards.has(ex.id) ? ' open' : '');
+    const orderPos = lastOrder && lastOrder.posById.get(ex.id);
+    const badge = orderPos ? `<span class="ex-order-badge" title="You did this ${orderPos}${ordinalSuffix(orderPos)} last session">#${orderPos}</span>` : '';
 
     const last = lastSession(ex.id);
     const today = todaySets(ex.id);
@@ -859,7 +916,7 @@
     }
 
     if (reorderMode) {
-      head.innerHTML = `<div><div class="ex-name">${escapeHtml(ex.name)}</div><div class="ex-meta">${metaHtml}</div></div>`;
+      head.innerHTML = `<div><div class="ex-name">${badge}${escapeHtml(ex.name)}</div><div class="ex-meta">${metaHtml}</div></div>`;
       const btns = document.createElement('div');
       btns.className = 'reorder-btns';
       const siblings = state.exercises.filter(e => e.category === ex.category);
@@ -878,7 +935,7 @@
       return card;
     }
 
-    head.innerHTML = `<div><div class="ex-name">${escapeHtml(ex.name)}</div><div class="ex-meta">${metaHtml}</div></div><span class="chev">▼</span>`;
+    head.innerHTML = `<div><div class="ex-name">${badge}${escapeHtml(ex.name)}</div><div class="ex-meta">${metaHtml}</div></div><span class="chev">▼</span>`;
     head.onclick = () => {
       if (openCards.has(ex.id)) openCards.delete(ex.id); else openCards.add(ex.id);
       render();
@@ -1113,6 +1170,11 @@
 
     card.appendChild(body);
     return card;
+  }
+
+  function ordinalSuffix(n) {
+    if (n % 100 >= 11 && n % 100 <= 13) return 'th';
+    return ['th', 'st', 'nd', 'rd'][n % 10] || 'th';
   }
 
   function escapeHtml(s) {
