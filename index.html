@@ -124,6 +124,27 @@
     font-size: 0.82rem; font-weight: 600;
     margin-bottom: 10px; line-height: 1.45;
   }
+  .warn {
+    background: rgba(255, 179, 71, 0.1);
+    border: 1px solid rgba(255, 179, 71, 0.4);
+    color: var(--amber);
+    border-radius: 10px; padding: 8px 11px;
+    font-size: 0.82rem; font-weight: 600;
+    margin-bottom: 10px; line-height: 1.45;
+  }
+  .meta-warn { color: var(--amber); font-weight: 600; }
+
+  .repeat-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    border-radius: 8px; padding: 6px 12px;
+    margin: 0 6px 6px 0;
+    font-size: 0.85rem; font-weight: 700;
+    cursor: pointer;
+  }
+  .repeat-btn:active { filter: brightness(1.25); }
 
   .spark-wrap { margin: 2px 0 12px; }
   svg.spark { width: 100%; height: 78px; display: block; touch-action: none; }
@@ -662,13 +683,53 @@
 
   function fmtWeight(kg) { return roundW(toDisplay(kg)) + ' ' + unit(); }
 
+  // Collapse identical (weight, reps) sets into groups, keeping the order of
+  // first occurrence. Used for the chips and all sets-summary strings.
+  function groupSets(sets) {
+    const groups = [];
+    for (const s of sets) {
+      const g = groups.find(x => x.weight === s.weight && (x.reps || null) === (s.reps || null));
+      if (g) { g.count++; g.ids.push(s.id); g.hasNote = g.hasNote || !!s.note; }
+      else groups.push({ weight: s.weight, reps: s.reps || null, count: 1, ids: [s.id], hasNote: !!s.note });
+    }
+    return groups;
+  }
+
   function setsSummary(sets) {
-    return sets.map(s => `${roundW(toDisplay(s.weight))}${s.reps ? '×' + s.reps : ''}`).join(', ');
+    return groupSets(sets).map(g =>
+      `${roundW(toDisplay(g.weight))}${g.reps ? '×' + g.reps : ''}${g.count > 1 ? ` (×${g.count})` : ''}`
+    ).join(', ');
+  }
+
+  // Rep outlier in the last session: at one weight, most sets hit the same rep
+  // count but a minority fell short (e.g. 3×10 and one set of 7).
+  function repOutlier(exId) {
+    const last = lastSession(exId);
+    if (!last) return null;
+    const byWeight = new Map();
+    for (const s of last.sets) {
+      if (!s.reps) continue;
+      if (!byWeight.has(s.weight)) byWeight.set(s.weight, []);
+      byWeight.get(s.weight).push(s);
+    }
+    for (const [w, sets] of [...byWeight.entries()].sort((a, b) => b[0] - a[0])) {
+      if (sets.length < 3) continue;
+      const freq = new Map();
+      for (const s of sets) freq.set(s.reps, (freq.get(s.reps) || 0) + 1);
+      let mode = null, modeN = 0;
+      for (const [r, n] of freq) if (n > modeN || (n === modeN && r > mode)) { mode = r; modeN = n; }
+      const low = sets.filter(s => s.reps < mode);
+      if (modeN >= 2 && low.length > 0 && low.length < modeN) {
+        return { weight: w, mode, modeCount: modeN, lowReps: low.map(s => s.reps), totalSets: sets.length, date: last.date };
+      }
+    }
+    return null;
   }
 
   // Double progression: same top weight two sessions running, 8+ reps at that
   // weight both times → suggest the next increment.
   function progressionHint(exId) {
+    if (repOutlier(exId)) return null; // don't suggest adding weight over uneven sets
     const sessions = sessionsFor(exId).filter(s => s.date !== todayKey());
     if (sessions.length < 2) return null;
     const [s1, s2] = sessions;
@@ -772,6 +833,7 @@
 
     const last = lastSession(ex.id);
     const today = todaySets(ex.id);
+    const outlier = repOutlier(ex.id);
 
     // --- header ---
     const head = document.createElement('div');
@@ -788,7 +850,8 @@
         else if (diff < 0) deltaHtml = ` · <span class="delta-down">▼ ${diff} kg today</span>`;
         else deltaHtml = ` · <span class="delta-same">= matched today</span>`;
       }
-      metaHtml = `Last: <span class="lastw">${fmtWeight(lastBest)}</span> · ${escapeHtml(setsSummary(last.sets))} · ${fmtDate(last.date)}${deltaHtml}`;
+      metaHtml = `Last: <span class="lastw">${fmtWeight(lastBest)}</span> · ${escapeHtml(setsSummary(last.sets))} · ${fmtDate(last.date)}${deltaHtml}` +
+        (outlier ? ` · <span class="meta-warn">⚠ uneven sets</span>` : '');
     } else if (today.length > 0) {
       metaHtml = `First session logged today 💪`;
     } else {
@@ -826,6 +889,16 @@
     const body = document.createElement('div');
     body.className = 'card-body';
 
+    if (outlier) {
+      const w = document.createElement('div');
+      w.className = 'warn';
+      const lowStr = outlier.lowReps.length === 1
+        ? `1 set fell to ${outlier.lowReps[0]}`
+        : `${outlier.lowReps.length} sets fell to ${outlier.lowReps.join(', ')}`;
+      w.textContent = `⚠️ Last time at ${roundW(toDisplay(outlier.weight))} ${unit()}: ${outlier.modeCount} sets hit ${outlier.mode} reps but ${lowStr} — aim for ${outlier.totalSets}×${outlier.mode} today before adding weight.`;
+      body.appendChild(w);
+    }
+
     const hint = progressionHint(ex.id);
     if (hint) {
       const h = document.createElement('div');
@@ -838,21 +911,42 @@
       const wrap = document.createElement('div');
       wrap.className = 'today-sets';
       wrap.innerHTML = `<div class="today-label">Today’s sets</div>`;
-      today.forEach((s, i) => {
+      for (const g of groupSets(today)) {
         const chip = document.createElement('span');
         chip.className = 'set-chip';
-        chip.innerHTML = `<span>Set ${i + 1}: ${fmtWeight(s.weight)}${s.reps ? ' × ' + s.reps : ''}${s.note ? ' 📝' : ''}</span>`;
+        chip.innerHTML = `<span>${g.count > 1 ? g.count + '× ' : ''}${fmtWeight(g.weight)}${g.reps ? ' × ' + g.reps : ''}${g.hasNote ? ' 📝' : ''}</span>`;
         const del = document.createElement('button');
         del.className = 'del-set';
         del.textContent = '✕';
-        del.title = 'Delete set';
+        del.title = g.count > 1 ? 'Delete one of these sets' : 'Delete set';
         del.onclick = () => {
-          state.logs = state.logs.filter(l => l.id !== s.id);
+          const removeId = g.ids[g.ids.length - 1];
+          state.logs = state.logs.filter(l => l.id !== removeId);
           dataChanged(); render();
         };
         chip.appendChild(del);
         wrap.appendChild(chip);
-      });
+      }
+
+      // one-tap repeat of the set just done
+      const lastSet = today[today.length - 1];
+      const repeat = document.createElement('button');
+      repeat.className = 'repeat-btn';
+      repeat.innerHTML = `↻ Same again <span style="font-weight:600;opacity:.85">(${roundW(toDisplay(lastSet.weight))}${lastSet.reps ? '×' + lastSet.reps : ''})</span>`;
+      repeat.onclick = () => {
+        state.logs.push({
+          id: uid(),
+          exerciseId: ex.id,
+          weight: lastSet.weight,
+          reps: lastSet.reps || null,
+          date: todayKey(),
+          ts: Date.now(),
+        });
+        dataChanged(); render();
+        toast(`Set ${today.length + 1} logged — same again`);
+      };
+      wrap.appendChild(repeat);
+
       today.forEach((s, i) => {
         if (!s.note) return;
         const n = document.createElement('div');
