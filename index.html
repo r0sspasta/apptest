@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#0f1115">
 <title>Gym Tracker</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <style>
   :root {
     --bg: #0f1115;
@@ -42,7 +44,12 @@
     margin-bottom: 10px;
   }
   h1 { font-size: 1.15rem; font-weight: 700; letter-spacing: 0.2px; }
-  .session-date { color: var(--text-dim); font-size: 0.85rem; }
+  .session-date { color: var(--text-dim); font-size: 0.78rem; }
+  .head-actions { display: flex; align-items: center; gap: 4px; }
+  .icon-btn {
+    background: none; border: none; font-size: 1.15rem;
+    cursor: pointer; padding: 4px 6px; line-height: 1;
+  }
 
   .tabs {
     display: flex; gap: 6px; overflow-x: auto; padding-bottom: 10px;
@@ -75,6 +82,64 @@
     margin-bottom: 12px; padding: 0 2px;
   }
   .day-summary .count { color: var(--text-dim); font-size: 0.82rem; }
+  .day-summary .right { display: flex; align-items: center; gap: 12px; }
+  .reorder-toggle {
+    background: none; border: none; color: var(--text-dim);
+    font-size: 0.82rem; font-weight: 700; cursor: pointer; padding: 2px 0;
+  }
+  .reorder-toggle.on { color: var(--accent); }
+
+  .order-label {
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.6px;
+    color: var(--text-dim); margin: 0 2px 6px;
+  }
+  .order-strip {
+    display: flex; gap: 6px; overflow-x: auto;
+    margin: 0 0 14px; padding: 0 2px 2px;
+    scrollbar-width: none;
+  }
+  .order-strip::-webkit-scrollbar { display: none; }
+  .order-chip {
+    flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 999px; padding: 5px 11px;
+    font-size: 0.78rem; font-weight: 600; color: var(--text-dim);
+    white-space: nowrap;
+  }
+  .order-chip .n { color: var(--accent); font-weight: 800; }
+
+  .reorder-btns { display: flex; gap: 6px; }
+  .reorder-btns button {
+    width: 40px; height: 40px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--surface-2);
+    color: var(--text); font-size: 1rem; cursor: pointer;
+  }
+  .reorder-btns button:disabled { opacity: 0.25; }
+
+  .hint {
+    background: rgba(62, 207, 142, 0.1);
+    border: 1px solid rgba(62, 207, 142, 0.35);
+    color: var(--green);
+    border-radius: 10px; padding: 8px 11px;
+    font-size: 0.82rem; font-weight: 600;
+    margin-bottom: 10px; line-height: 1.45;
+  }
+
+  .spark-wrap { margin: 2px 0 12px; }
+  svg.spark { width: 100%; height: 78px; display: block; touch-action: none; }
+  .spark-caption { font-size: 0.75rem; color: var(--text-dim); min-height: 1.1em; margin-top: 3px; }
+
+  .note-row { margin-top: 8px; }
+  .note-input {
+    width: 100%; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 10px;
+    color: var(--text); font-size: 0.9rem; padding: 9px 11px; outline: none;
+  }
+  .note-input:focus { border-color: var(--accent); }
+  .set-note, .last-note {
+    font-size: 0.78rem; color: var(--text-dim); font-style: italic;
+    margin: 4px 2px 0;
+  }
 
   .card {
     background: var(--surface);
@@ -215,7 +280,57 @@
     border-radius: 16px 16px 0 0;
     padding: 20px 18px 26px;
     width: 100%; max-width: 640px;
+    max-height: 82vh; overflow-y: auto;
   }
+  .settings-h {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px;
+    color: var(--text-dim); margin: 0 0 8px;
+  }
+  .seg {
+    display: flex; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden; margin-bottom: 18px;
+  }
+  .seg button {
+    flex: 1; background: none; border: none; color: var(--text-dim);
+    font-weight: 700; padding: 10px; cursor: pointer; font-size: 0.9rem;
+  }
+  .seg button.on { background: var(--accent-soft); color: var(--accent); }
+
+  .pr-cat {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px;
+    color: var(--text-dim); margin: 16px 0 4px;
+  }
+  .pr-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 8px 0; font-size: 0.9rem;
+    border-bottom: 1px dashed rgba(44, 49, 61, 0.6);
+  }
+  .pr-row:last-child { border-bottom: none; }
+  .pr-row .w { color: var(--amber); font-weight: 700; white-space: nowrap; }
+  .pr-row .d { color: var(--text-dim); font-size: 0.78rem; margin-left: 8px; }
+  .pr-empty { color: var(--text-dim); font-size: 0.88rem; padding: 12px 0; }
+
+  .cal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .cal-title { font-weight: 700; }
+  .cal-nav {
+    background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 8px; width: 36px; height: 36px;
+    font-size: 1rem; cursor: pointer;
+  }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal-dow { text-align: center; font-size: 0.66rem; color: var(--text-dim); text-transform: uppercase; padding: 4px 0; }
+  .cal-day {
+    aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+    border-radius: 10px; font-size: 0.85rem; color: var(--text-dim);
+  }
+  .cal-day.trained {
+    background: var(--accent-soft); color: var(--accent);
+    font-weight: 700; border: 1px solid var(--accent);
+  }
+  .cal-day.today { outline: 2px solid var(--amber); outline-offset: -2px; }
+  .cal-streak { margin-top: 14px; text-align: center; font-weight: 700; }
+  .cal-sub { text-align: center; color: var(--text-dim); font-size: 0.8rem; margin-top: 4px; }
   .modal h2 { font-size: 1rem; margin-bottom: 14px; }
   .modal-help { font-size: 0.83rem; color: var(--text-dim); margin-bottom: 14px; line-height: 1.5; }
   .modal-help a { color: var(--accent); }
@@ -270,6 +385,16 @@
     white-space: nowrap;
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.pr { border-color: var(--amber); color: var(--amber); font-size: 0.95rem; }
+
+  .confetti {
+    position: fixed; top: -30px; z-index: 100; pointer-events: none;
+    font-size: 1.3rem;
+    animation: confetti-fall 1.5s ease-in forwards;
+  }
+  @keyframes confetti-fall {
+    to { transform: translateY(108vh) rotate(560deg); opacity: 0; }
+  }
 </style>
 </head>
 <body>
@@ -277,7 +402,11 @@
 <header>
   <div class="header-row">
     <h1>🏋️ Gym Tracker</h1>
-    <span class="session-date" id="sessionDate"></span>
+    <div class="head-actions">
+      <span class="session-date" id="sessionDate"></span>
+      <button class="icon-btn" id="prBtn" title="Personal records">🏆</button>
+      <button class="icon-btn" id="calBtn" title="Training calendar">📅</button>
+    </div>
   </div>
   <nav class="tabs" id="tabs"></nav>
 </header>
@@ -303,9 +432,42 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="prBackdrop">
+  <div class="modal">
+    <h2>🏆 Personal records</h2>
+    <div id="prList"></div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn btn-ghost" id="prClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="calBackdrop">
+  <div class="modal">
+    <h2>📅 Training calendar</h2>
+    <div class="cal-head">
+      <button class="cal-nav" id="calPrev">‹</button>
+      <span class="cal-title" id="calTitle"></span>
+      <button class="cal-nav" id="calNext">›</button>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+    <div class="cal-streak" id="calStreak"></div>
+    <div class="cal-sub" id="calSub"></div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn btn-ghost" id="calClose">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-backdrop" id="settingsBackdrop">
   <div class="modal">
-    <h2>Google Sheets sync</h2>
+    <h2>Settings</h2>
+    <div class="settings-h">Units</div>
+    <div class="seg" id="unitSeg">
+      <button data-unit="kg">kg</button>
+      <button data-unit="lb">lb</button>
+    </div>
+    <div class="settings-h">Google Sheets sync</div>
     <p class="modal-help">
       Automatically backs up every set you log to your own Google Sheet.
       One-time setup: follow the
@@ -363,6 +525,8 @@
   let activeCat = state.ui.activeCat || CATEGORIES[0].id;
   let openCards = new Set();     // exercise ids with expanded card
   let openHistories = new Set(); // exercise ids with history shown
+  let reorderMode = false;       // when true, cards show up/down controls
+  let pendingNotes = new Map();  // exercise id -> note text typed but not yet logged
 
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
@@ -375,6 +539,7 @@
     s.ui = s.ui || {};
     s.settings = s.settings || {};
     if (typeof s.settings.sheetsUrl !== 'string') s.settings.sheetsUrl = '';
+    if (s.settings.unit !== 'lb') s.settings.unit = 'kg';
     s.syncMeta = s.syncMeta || {};
     if (typeof s.syncMeta.dirty !== 'boolean') s.syncMeta.dirty = false;
     if (!('lastSyncTs' in s.syncMeta)) s.syncMeta.lastSyncTs = null;
@@ -440,6 +605,44 @@
     return s ? s.sets : [];
   }
 
+  // For a set of exercises (one category), find the most recent completed
+  // workout date (before today) and the order exercises were logged in,
+  // by each exercise's first set timestamp that day.
+  function lastWorkoutOrder(exs) {
+    const ids = new Set(exs.map(e => e.id));
+    let lastDate = null;
+    for (const l of state.logs) {
+      if (!ids.has(l.exerciseId) || l.date === todayKey()) continue;
+      if (lastDate === null || l.date > lastDate) lastDate = l.date;
+    }
+    if (!lastDate) return null;
+    const firstTs = new Map();
+    for (const l of state.logs) {
+      if (!ids.has(l.exerciseId) || l.date !== lastDate) continue;
+      const cur = firstTs.get(l.exerciseId);
+      if (cur === undefined || l.ts < cur) firstTs.set(l.exerciseId, l.ts);
+    }
+    const byId = new Map(exs.map(e => [e.id, e.name]));
+    const names = [...firstTs.entries()]
+      .sort((a, b) => a[1] - b[1])
+      .map(([id]) => byId.get(id))
+      .filter(Boolean);
+    return names.length ? { date: lastDate, names } : null;
+  }
+
+  // Move an exercise up/down among its category siblings in state.exercises.
+  function moveExercise(ex, dir) {
+    const siblings = state.exercises.filter(e => e.category === ex.category);
+    const pos = siblings.indexOf(ex);
+    const swapWith = siblings[pos + dir];
+    if (!swapWith) return;
+    const i = state.exercises.indexOf(ex);
+    const j = state.exercises.indexOf(swapWith);
+    state.exercises[i] = swapWith;
+    state.exercises[j] = ex;
+    dataChanged(); render();
+  }
+
   function fmtDate(key) {
     const [y, m, d] = key.split('-').map(Number);
     const date = new Date(y, m - 1, d);
@@ -450,10 +653,39 @@
     return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: y !== now.getFullYear() ? 'numeric' : undefined });
   }
 
-  function fmtWeight(w) { return (Math.round(w * 100) / 100) + ' kg'; }
+  // Weights are stored in kg; conversion happens only at the display boundary.
+  const KG_PER_LB = 0.45359237;
+  function unit() { return state.settings.unit === 'lb' ? 'lb' : 'kg'; }
+  function toDisplay(kg) { return unit() === 'lb' ? kg / KG_PER_LB : kg; }
+  function fromDisplay(v) { return unit() === 'lb' ? v * KG_PER_LB : v; }
+  function roundW(v) { return Math.round(v * 100) / 100; }
+
+  function fmtWeight(kg) { return roundW(toDisplay(kg)) + ' ' + unit(); }
 
   function setsSummary(sets) {
-    return sets.map(s => `${Math.round(s.weight * 100) / 100}${s.reps ? '×' + s.reps : ''}`).join(', ');
+    return sets.map(s => `${roundW(toDisplay(s.weight))}${s.reps ? '×' + s.reps : ''}`).join(', ');
+  }
+
+  // Double progression: same top weight two sessions running, 8+ reps at that
+  // weight both times → suggest the next increment.
+  function progressionHint(exId) {
+    const sessions = sessionsFor(exId).filter(s => s.date !== todayKey());
+    if (sessions.length < 2) return null;
+    const [s1, s2] = sessions;
+    const best = bestWeight(s1.sets);
+    if (bestWeight(s2.sets) !== best) return null;
+    const hitReps = sess => sess.sets.some(x => x.weight === best && (x.reps || 0) >= 8);
+    if (!hitReps(s1) || !hitReps(s2)) return null;
+    const inc = unit() === 'lb' ? 5 : 2.5;
+    return { lastDisp: roundW(toDisplay(best)), targetDisp: roundW(toDisplay(best) + inc) };
+  }
+
+  function allTimeBestKg(exId) {
+    let best = null;
+    for (const l of state.logs) {
+      if (l.exerciseId === exId && (best === null || l.weight > best)) best = l.weight;
+    }
+    return best;
   }
 
   // ---------- rendering ----------
@@ -487,9 +719,32 @@
     const summary = document.createElement('div');
     summary.className = 'day-summary';
     const loggedToday = exs.filter(e => todaySets(e.id).length > 0).length;
-    summary.innerHTML = `<span class="count">${exs.length} exercise${exs.length === 1 ? '' : 's'}</span>` +
-      (loggedToday ? `<span class="count" style="color:var(--green)">✓ ${loggedToday} logged today</span>` : '');
+    summary.innerHTML =
+      `<span class="count">${exs.length} exercise${exs.length === 1 ? '' : 's'}</span>` +
+      `<span class="right">` +
+      (loggedToday ? `<span class="count" style="color:var(--green)">✓ ${loggedToday} logged today</span>` : '') +
+      `<button class="reorder-toggle ${reorderMode ? 'on' : ''}" id="reorderToggle">${reorderMode ? '✓ Done' : '⇅ Reorder'}</button>` +
+      `</span>`;
     $main.appendChild(summary);
+    summary.querySelector('#reorderToggle').onclick = () => { reorderMode = !reorderMode; render(); };
+
+    // The order this muscle group was actually done in, last completed workout.
+    const lastOrder = lastWorkoutOrder(exs);
+    if (lastOrder && !reorderMode) {
+      const label = document.createElement('div');
+      label.className = 'order-label';
+      label.textContent = `Last ${cat.name} session — order you did them (${fmtDate(lastOrder.date)})`;
+      $main.appendChild(label);
+      const strip = document.createElement('div');
+      strip.className = 'order-strip';
+      lastOrder.names.forEach((name, i) => {
+        const chip = document.createElement('span');
+        chip.className = 'order-chip';
+        chip.innerHTML = `<span class="n">${i + 1}</span> ${escapeHtml(name)}`;
+        strip.appendChild(chip);
+      });
+      $main.appendChild(strip);
+    }
 
     if (exs.length === 0) {
       const empty = document.createElement('div');
@@ -540,6 +795,26 @@
       metaHtml = `No sessions yet — log your first`;
     }
 
+    if (reorderMode) {
+      head.innerHTML = `<div><div class="ex-name">${escapeHtml(ex.name)}</div><div class="ex-meta">${metaHtml}</div></div>`;
+      const btns = document.createElement('div');
+      btns.className = 'reorder-btns';
+      const siblings = state.exercises.filter(e => e.category === ex.category);
+      const pos = siblings.indexOf(ex);
+      const up = document.createElement('button');
+      up.textContent = '↑';
+      up.disabled = pos === 0;
+      up.onclick = e => { e.stopPropagation(); moveExercise(ex, -1); };
+      const down = document.createElement('button');
+      down.textContent = '↓';
+      down.disabled = pos === siblings.length - 1;
+      down.onclick = e => { e.stopPropagation(); moveExercise(ex, 1); };
+      btns.appendChild(up); btns.appendChild(down);
+      head.appendChild(btns);
+      card.appendChild(head);
+      return card;
+    }
+
     head.innerHTML = `<div><div class="ex-name">${escapeHtml(ex.name)}</div><div class="ex-meta">${metaHtml}</div></div><span class="chev">▼</span>`;
     head.onclick = () => {
       if (openCards.has(ex.id)) openCards.delete(ex.id); else openCards.add(ex.id);
@@ -551,6 +826,14 @@
     const body = document.createElement('div');
     body.className = 'card-body';
 
+    const hint = progressionHint(ex.id);
+    if (hint) {
+      const h = document.createElement('div');
+      h.className = 'hint';
+      h.textContent = `💡 Try ${hint.targetDisp} ${unit()} today — you've hit ${hint.lastDisp} ${unit()} for 8+ reps two sessions running.`;
+      body.appendChild(h);
+    }
+
     if (today.length > 0) {
       const wrap = document.createElement('div');
       wrap.className = 'today-sets';
@@ -558,7 +841,7 @@
       today.forEach((s, i) => {
         const chip = document.createElement('span');
         chip.className = 'set-chip';
-        chip.innerHTML = `<span>Set ${i + 1}: ${fmtWeight(s.weight)}${s.reps ? ' × ' + s.reps : ''}</span>`;
+        chip.innerHTML = `<span>Set ${i + 1}: ${fmtWeight(s.weight)}${s.reps ? ' × ' + s.reps : ''}${s.note ? ' 📝' : ''}</span>`;
         const del = document.createElement('button');
         del.className = 'del-set';
         del.textContent = '✕';
@@ -569,6 +852,13 @@
         };
         chip.appendChild(del);
         wrap.appendChild(chip);
+      });
+      today.forEach((s, i) => {
+        if (!s.note) return;
+        const n = document.createElement('div');
+        n.className = 'set-note';
+        n.textContent = `Set ${i + 1}: ${s.note}`;
+        wrap.appendChild(n);
       });
       body.appendChild(wrap);
     }
@@ -584,9 +874,9 @@
     wInput.inputMode = 'decimal';
     wInput.step = 'any';
     wInput.min = '0';
-    wInput.placeholder = last ? String(bestWeight(last.sets)) : 'kg';
+    wInput.placeholder = hint ? String(hint.targetDisp) : (last ? String(roundW(toDisplay(bestWeight(last.sets)))) : unit());
     wField.appendChild(wInput);
-    wField.insertAdjacentHTML('beforeend', '<span class="field-label">Weight (kg)</span>');
+    wField.insertAdjacentHTML('beforeend', `<span class="field-label">Weight (${unit()})</span>`);
 
     const rField = document.createElement('div');
     rField.className = 'field';
@@ -602,19 +892,28 @@
     logBtn.className = 'btn btn-log';
     logBtn.textContent = 'Log set';
     const doLog = () => {
-      const weight = parseFloat(wInput.value);
-      if (isNaN(weight) || weight < 0) { wInput.focus(); return; }
+      const entered = parseFloat(wInput.value);
+      if (isNaN(entered) || entered < 0) { wInput.focus(); return; }
+      const weightKg = fromDisplay(entered);
       const reps = parseInt(rInput.value, 10);
+      const note = (pendingNotes.get(ex.id) || '').trim();
+      const prevBest = allTimeBestKg(ex.id);
       state.logs.push({
         id: uid(),
         exerciseId: ex.id,
-        weight,
+        weight: weightKg,
         reps: isNaN(reps) ? null : reps,
+        note: note || undefined,
         date: todayKey(),
         ts: Date.now(),
       });
+      pendingNotes.delete(ex.id);
       dataChanged(); render();
-      toast(`Logged ${fmtWeight(weight)} — ${ex.name}`);
+      if (prevBest !== null && weightKg > prevBest) {
+        celebratePR(`🎉 NEW PR — ${ex.name} ${fmtWeight(weightKg)}!`);
+      } else {
+        toast(`Logged ${fmtWeight(weightKg)} — ${ex.name}`);
+      }
     };
     logBtn.onclick = doLog;
     wInput.addEventListener('keydown', e => { if (e.key === 'Enter') doLog(); });
@@ -624,6 +923,35 @@
     logRow.appendChild(rField);
     logRow.appendChild(logBtn);
     body.appendChild(logRow);
+
+    // note for the next logged set
+    const noteRow = document.createElement('div');
+    noteRow.className = 'note-row';
+    const noteInput = document.createElement('input');
+    noteInput.type = 'text';
+    noteInput.className = 'note-input';
+    noteInput.placeholder = '📝 Note for this set (optional) — e.g. felt heavy, new grip';
+    noteInput.maxLength = 120;
+    noteInput.value = pendingNotes.get(ex.id) || '';
+    noteInput.oninput = () => pendingNotes.set(ex.id, noteInput.value);
+    noteRow.appendChild(noteInput);
+    body.appendChild(noteRow);
+
+    // last session's notes, for context before this session's sets
+    if (last) {
+      const lastNotes = last.sets.filter(s => s.note);
+      if (lastNotes.length) {
+        const ln = document.createElement('div');
+        ln.className = 'last-note';
+        ln.textContent = '📝 Last time: ' + lastNotes.map(s =>
+          `“${s.note}” (${roundW(toDisplay(s.weight))}${s.reps ? '×' + s.reps : ''})`).join(' · ');
+        body.appendChild(ln);
+      }
+    }
+
+    // progress chart: best weight per session over time
+    const chartEl = renderSpark(ex.id);
+    if (chartEl) body.appendChild(chartEl);
 
     // actions
     const actions = document.createElement('div');
@@ -671,12 +999,19 @@
         const allTimeBest = Math.max(...sessions.map(s => bestWeight(s.sets)));
         for (const s of sessions.slice(0, 20)) {
           const best = bestWeight(s.sets);
+          const notes = s.sets.filter(x => x.note);
           const row = document.createElement('div');
           row.className = 'hist-row';
           row.innerHTML =
             `<span class="hist-date">${fmtDate(s.date)}</span>` +
-            `<span class="hist-sets ${best === allTimeBest ? 'hist-best' : ''}">${escapeHtml(setsSummary(s.sets))} kg${best === allTimeBest ? ' ★' : ''}</span>`;
+            `<span class="hist-sets ${best === allTimeBest ? 'hist-best' : ''}">${escapeHtml(setsSummary(s.sets))} ${unit()}${best === allTimeBest ? ' ★' : ''}${notes.length ? ' 📝' : ''}</span>`;
           hist.appendChild(row);
+          for (const n of notes) {
+            const noteEl = document.createElement('div');
+            noteEl.className = 'set-note';
+            noteEl.textContent = `“${n.note}” (${roundW(toDisplay(n.weight))}${n.reps ? '×' + n.reps : ''})`;
+            hist.appendChild(noteEl);
+          }
         }
       }
       body.appendChild(hist);
@@ -727,6 +1062,207 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => $t.classList.remove('show'), 1800);
   }
+
+  // ---------- PR celebration ----------
+
+  function celebratePR(msg) {
+    const $t = document.getElementById('toast');
+    $t.classList.add('pr');
+    toast(msg);
+    setTimeout(() => $t.classList.remove('pr'), 2400);
+    const emojis = ['🎉', '💪', '⭐', '🔥', '🏆'];
+    for (let i = 0; i < 18; i++) {
+      const el = document.createElement('span');
+      el.className = 'confetti';
+      el.textContent = emojis[i % emojis.length];
+      el.style.left = Math.random() * 100 + 'vw';
+      el.style.animationDelay = (Math.random() * 0.35) + 's';
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 2300);
+    }
+  }
+
+  // ---------- progress chart ----------
+
+  // Small single-series line chart: best weight per session, chronological.
+  function renderSpark(exId) {
+    const sessions = sessionsFor(exId).slice().reverse();
+    if (sessions.length < 2) return null;
+    const data = sessions.slice(-15).map(s => ({ date: s.date, val: roundW(toDisplay(bestWeight(s.sets))) }));
+    const W = 340, H = 84, L = 10, R = 46, T = 14, B = 12;
+    const vals = data.map(d => d.val);
+    let lo = Math.min(...vals), hi = Math.max(...vals);
+    if (hi === lo) { lo -= 2.5; hi += 2.5; }
+    const padV = (hi - lo) * 0.12;
+    lo -= padV; hi += padV;
+    const x = i => L + (W - L - R) * (i / (data.length - 1));
+    const y = v => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+    const maxVal = Math.max(...vals);
+    const pts = data.map((d, i) => ({ px: x(i), py: y(d.val), date: d.date, val: d.val }));
+    const lastP = pts[pts.length - 1];
+
+    let svg = `<svg class="spark" viewBox="0 0 ${W} ${H}" role="img" aria-label="Best weight per session">`;
+    svg += `<line x1="${L}" y1="${H - B}" x2="${W - 12}" y2="${H - B}" stroke="var(--border)" stroke-width="1"/>`;
+    svg += `<polyline points="${pts.map(p => p.px.toFixed(1) + ',' + p.py.toFixed(1)).join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    for (const p of pts) {
+      svg += `<circle cx="${p.px.toFixed(1)}" cy="${p.py.toFixed(1)}" r="3.5" fill="${p.val === maxVal ? 'var(--amber)' : 'var(--accent)'}" stroke="var(--surface)" stroke-width="2"/>`;
+    }
+    svg += `<text x="${(lastP.px + 8).toFixed(1)}" y="${(lastP.py + 4).toFixed(1)}" fill="var(--text)" font-size="11" font-weight="700">${lastP.val}</text>`;
+    svg += `</svg>`;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'spark-wrap';
+    const baseCaption = `Best ${unit()} per session · amber dot = all-time best (${maxVal} ${unit()}) · tap for values`;
+    wrap.innerHTML = svg + `<div class="spark-caption">${baseCaption}</div>`;
+
+    const svgEl = wrap.querySelector('svg');
+    const cap = wrap.querySelector('.spark-caption');
+    const showNearest = ev => {
+      const rect = svgEl.getBoundingClientRect();
+      const relX = (ev.clientX - rect.left) / rect.width * W;
+      let nearest = pts[0];
+      for (const p of pts) if (Math.abs(p.px - relX) < Math.abs(nearest.px - relX)) nearest = p;
+      cap.textContent = `${fmtDate(nearest.date)} — ${nearest.val} ${unit()}`;
+    };
+    svgEl.addEventListener('pointerdown', showNearest);
+    svgEl.addEventListener('pointermove', ev => { if (ev.buttons) showNearest(ev); });
+    svgEl.addEventListener('pointerleave', () => { cap.textContent = baseCaption; });
+    return wrap;
+  }
+
+  // ---------- personal records screen ----------
+
+  const $prBackdrop = document.getElementById('prBackdrop');
+  document.getElementById('prBtn').onclick = () => { renderPRs(); $prBackdrop.classList.add('show'); };
+  document.getElementById('prClose').onclick = () => $prBackdrop.classList.remove('show');
+  $prBackdrop.addEventListener('click', e => { if (e.target === $prBackdrop) $prBackdrop.classList.remove('show'); });
+
+  function renderPRs() {
+    const list = document.getElementById('prList');
+    list.innerHTML = '';
+    let any = false;
+    for (const cat of CATEGORIES) {
+      const rows = [];
+      for (const ex of state.exercises.filter(e => e.category === cat.id)) {
+        const best = allTimeBestKg(ex.id);
+        if (best === null) continue;
+        let bestLog = null;
+        for (const l of state.logs) {
+          if (l.exerciseId === ex.id && l.weight === best && (!bestLog || l.ts < bestLog.ts)) bestLog = l;
+        }
+        rows.push({ name: ex.name, best, reps: bestLog && bestLog.reps, date: bestLog && bestLog.date });
+      }
+      if (!rows.length) continue;
+      any = true;
+      const h = document.createElement('div');
+      h.className = 'pr-cat';
+      h.textContent = cat.name;
+      list.appendChild(h);
+      for (const r of rows) {
+        const row = document.createElement('div');
+        row.className = 'pr-row';
+        row.innerHTML = `<span>${escapeHtml(r.name)}</span>` +
+          `<span><span class="w">${fmtWeight(r.best)}${r.reps ? ' × ' + r.reps : ''}</span>` +
+          `<span class="d">${r.date ? fmtDate(r.date) : ''}</span></span>`;
+        list.appendChild(row);
+      }
+    }
+    if (!any) list.innerHTML = '<div class="pr-empty">No records yet — log some sets and your all-time bests will appear here.</div>';
+  }
+
+  // ---------- training calendar ----------
+
+  const $calBackdrop = document.getElementById('calBackdrop');
+  let calMonth = null;
+  document.getElementById('calBtn').onclick = () => {
+    const now = new Date();
+    calMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    renderCalendar();
+    $calBackdrop.classList.add('show');
+  };
+  document.getElementById('calClose').onclick = () => $calBackdrop.classList.remove('show');
+  $calBackdrop.addEventListener('click', e => { if (e.target === $calBackdrop) $calBackdrop.classList.remove('show'); });
+  document.getElementById('calPrev').onclick = () => { calMonth.setMonth(calMonth.getMonth() - 1); renderCalendar(); };
+  document.getElementById('calNext').onclick = () => { calMonth.setMonth(calMonth.getMonth() + 1); renderCalendar(); };
+
+  function mondayKey(d) {
+    const dd = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    dd.setDate(dd.getDate() - ((dd.getDay() + 6) % 7));
+    return todayKey(dd);
+  }
+
+  // Consecutive calendar weeks (Mon–Sun) with at least one workout. The
+  // current week only counts once trained, but a quiet current week doesn't
+  // break a streak that ran through last week.
+  function weeklyStreak(trained) {
+    const weeks = new Set();
+    for (const k of trained) {
+      const [y, m, d] = k.split('-').map(Number);
+      weeks.add(mondayKey(new Date(y, m - 1, d)));
+    }
+    const now = new Date();
+    let wk = mondayKey(now);
+    if (!weeks.has(wk)) {
+      const prev = new Date(now); prev.setDate(prev.getDate() - 7);
+      wk = mondayKey(prev);
+    }
+    let streak = 0;
+    while (weeks.has(wk)) {
+      streak++;
+      const [y, m, d] = wk.split('-').map(Number);
+      wk = mondayKey(new Date(y, m - 1, d - 7));
+    }
+    return streak;
+  }
+
+  function renderCalendar() {
+    const trained = new Set(state.logs.map(l => l.date));
+    document.getElementById('calTitle').textContent =
+      calMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    const grid = document.getElementById('calGrid');
+    grid.innerHTML = '';
+    for (const d of ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']) {
+      const el = document.createElement('div');
+      el.className = 'cal-dow';
+      el.textContent = d;
+      grid.appendChild(el);
+    }
+    const lead = (new Date(calMonth).getDay() + 6) % 7;
+    for (let i = 0; i < lead; i++) grid.appendChild(document.createElement('div'));
+    const days = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 0).getDate();
+    const tk = todayKey();
+    let monthCount = 0;
+    for (let day = 1; day <= days; day++) {
+      const key = todayKey(new Date(calMonth.getFullYear(), calMonth.getMonth(), day));
+      const el = document.createElement('div');
+      el.className = 'cal-day' + (trained.has(key) ? ' trained' : '') + (key === tk ? ' today' : '');
+      el.textContent = day;
+      if (trained.has(key)) monthCount++;
+      grid.appendChild(el);
+    }
+    const streak = weeklyStreak(trained);
+    document.getElementById('calStreak').textContent =
+      streak > 0 ? `🔥 ${streak}-week streak` : 'No streak yet — this week is a fresh start 💪';
+    document.getElementById('calSub').textContent =
+      `${monthCount} workout day${monthCount === 1 ? '' : 's'} this month`;
+  }
+
+  // ---------- units ----------
+
+  const $unitSeg = document.getElementById('unitSeg');
+  function renderUnitSeg() {
+    for (const b of $unitSeg.querySelectorAll('button')) {
+      b.classList.toggle('on', b.dataset.unit === unit());
+    }
+  }
+  $unitSeg.addEventListener('click', e => {
+    const b = e.target.closest('button[data-unit]');
+    if (!b) return;
+    state.settings.unit = b.dataset.unit;
+    save();
+    renderUnitSeg();
+    render();
+  });
 
   // ---------- Google Sheets sync ----------
   //
@@ -833,6 +1369,7 @@
 
   function openSettings() {
     $sheetsUrlInput.value = state.settings.sheetsUrl || '';
+    renderUnitSeg();
     renderSettingsStatus();
     $settingsBackdrop.classList.add('show');
   }
@@ -923,6 +1460,11 @@
   render();
   renderSyncPill();
   if (state.syncMeta.dirty) scheduleSync();
+
+  // PWA: offline app shell (https or localhost only — no-op on file://)
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
 })();
 </script>
 </body>

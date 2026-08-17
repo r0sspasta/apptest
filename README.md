@@ -19,13 +19,29 @@ renamed or deleted, so you can shape the list to match your own routine.
 
 - **Log between sets** — open an exercise card, type the weight (reps optional)
   and hit **Log set**. Each set is stamped with today's date automatically.
+  Add an optional note ("felt heavy", "new grip") and it's shown for context
+  next session.
 - **See what you did last time** — every card shows your most recent previous
   session (best weight, all sets, and when it was) so you know what to beat.
-  The weight input is even pre-hinted with last session's best.
-- **Progression at a glance** — once you log today, the card shows
-  ▲ / ▼ / = against last session's best weight.
+- **Progression hints** — classic double progression: hit 8+ reps at the same
+  top weight two sessions running and the card suggests the next increment,
+  pre-filled in the weight input.
+- **Progress charts** — each card charts your best weight per session, with
+  the all-time best highlighted. Tap the chart for exact values.
+- **Personal records** — the 🏆 button lists all-time bests per exercise, and
+  beating one mid-workout earns a celebration.
+- **Training calendar** — the 📅 button shows a month view of your workout
+  days and your current weekly streak.
+- **Last-session order** — each day shows the order you actually did the
+  exercises last time, and ⇅ Reorder lets you arrange cards to match your
+  routine.
+- **kg / lb** — switch units in settings; data is stored in kg underneath so
+  nothing is lost switching back and forth.
 - **History** — tap *History* on any card for your last 20 sessions, with your
-  all-time best marked ★.
+  all-time best marked ★ and notes shown inline.
+- **Installable & offline** — served over HTTPS it's a full PWA: "Add to Home
+  Screen" gives a real app icon, full-screen launch, and offline support via a
+  service worker.
 - **Add exercises** — the **+ Add exercise** button at the bottom of each day
   adds a new exercise to that day.
 - **Backup** — *Export data* downloads a JSON backup; *Import data* restores it
@@ -56,10 +72,13 @@ One-time setup (about 3 minutes):
 6. In the tracker, tap **Sheets sync** in the bottom bar, paste the URL, and
    hit **Save & test**. You should see "Connected ✓" and your sheet fills in.
 
-Your sheet gets two tabs, kept up to date on every sync:
+Your sheet gets four tabs, kept up to date on every sync:
 
 - **Workout Log** — one row per set (`Date | Day | Exercise | Set | Weight |
   Reps | Logged at`), ready for charts or pivot tables.
+- **Progress** — an auto-built line chart of best weight per session for your
+  most-trained exercises (up to 8 series).
+- **Chart Data** — the pivot table feeding that chart.
 - **Backup** — a full JSON snapshot. If you ever lose your phone data, join
   the backup cells into a `.json` file and restore via **Import data**.
 

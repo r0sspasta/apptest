@@ -8,11 +8,17 @@
  *
  * The tracker POSTs its full log after every change. This script rewrites:
  *   - "Workout Log": one row per set, human-readable, for long-term tracking
+ *   - "Progress": a line chart of best weight per session per exercise
+ *   - "Chart Data": the pivot table feeding that chart
  *   - "Backup": a full JSON snapshot you can restore via the app's Import
  */
 
 var LOG_SHEET = 'Workout Log';
 var BACKUP_SHEET = 'Backup';
+var CHART_DATA_SHEET = 'Chart Data';
+var PROGRESS_SHEET = 'Progress';
+var MAX_CHART_SERIES = 8;
+var SERIES_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'];
 
 function doGet() {
   return jsonOut({
@@ -40,6 +46,7 @@ function doPost(e) {
   lock.tryLock(20000);
   try {
     writeWorkoutLog(data);
+    writeProgressChart(data);
     writeBackup(data);
     return jsonOut({ ok: true, sets: (data.logs || []).length, syncedAt: new Date().toISOString() });
   } catch (err) {
@@ -82,6 +89,74 @@ function writeWorkoutLog(data) {
   sheet.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
   sheet.getRange(1, 1, 1, rows[0].length).setFontWeight('bold');
   sheet.setFrozenRows(1);
+}
+
+/**
+ * Rebuilds "Chart Data" (Date × exercise, cell = best weight that session)
+ * and a line chart on "Progress". Series are capped at the most-trained
+ * exercises so the chart stays readable.
+ */
+function writeProgressChart(data) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var exById = {};
+  (data.exercises || []).forEach(function (x) { exById[x.id] = x; });
+
+  // best weight per exercise per date + session counts
+  var bestByDateEx = {}; // date -> exId -> best kg
+  var sessionCount = {}; // exId -> distinct dates
+  (data.logs || []).forEach(function (l) {
+    if (!exById[l.exerciseId]) return;
+    if (!bestByDateEx[l.date]) bestByDateEx[l.date] = {};
+    var cur = bestByDateEx[l.date][l.exerciseId];
+    if (cur === undefined || l.weight > cur) bestByDateEx[l.date][l.exerciseId] = l.weight;
+  });
+  Object.keys(bestByDateEx).forEach(function (date) {
+    Object.keys(bestByDateEx[date]).forEach(function (exId) {
+      sessionCount[exId] = (sessionCount[exId] || 0) + 1;
+    });
+  });
+
+  var topExIds = Object.keys(sessionCount)
+    .sort(function (a, b) { return sessionCount[b] - sessionCount[a]; })
+    .slice(0, MAX_CHART_SERIES);
+
+  var dataSheet = ss.getSheetByName(CHART_DATA_SHEET) || ss.insertSheet(CHART_DATA_SHEET);
+  dataSheet.clearContents();
+  var chartSheet = ss.getSheetByName(PROGRESS_SHEET) || ss.insertSheet(PROGRESS_SHEET, 1);
+  chartSheet.getCharts().forEach(function (c) { chartSheet.removeChart(c); });
+
+  if (topExIds.length === 0) return;
+
+  var dates = Object.keys(bestByDateEx).sort();
+  var rows = [['Date'].concat(topExIds.map(function (id) { return exById[id].name; }))];
+  dates.forEach(function (date) {
+    var row = [date];
+    topExIds.forEach(function (exId) {
+      var v = bestByDateEx[date][exId];
+      row.push(v === undefined ? '' : v);
+    });
+    rows.push(row);
+  });
+  dataSheet.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
+  dataSheet.getRange(1, 1, 1, rows[0].length).setFontWeight('bold');
+  dataSheet.setFrozenRows(1);
+
+  var chart = chartSheet.newChart()
+    .setChartType(Charts.ChartType.LINE)
+    .addRange(dataSheet.getRange(1, 1, rows.length, rows[0].length))
+    .setPosition(1, 1, 8, 8)
+    .setOption('title', 'Best weight per session (kg)')
+    .setOption('width', 900)
+    .setOption('height', 480)
+    .setOption('colors', SERIES_COLORS.slice(0, topExIds.length))
+    .setOption('interpolateNulls', true)
+    .setOption('pointSize', 5)
+    .setOption('lineWidth', 2)
+    .setOption('legend', { position: 'right' })
+    .setOption('hAxis', { title: 'Date' })
+    .setOption('vAxis', { title: 'kg' })
+    .build();
+  chartSheet.insertChart(chart);
 }
 
 function writeBackup(data) {
