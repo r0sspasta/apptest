@@ -85,11 +85,6 @@
   }
   .day-summary .count { color: var(--text-dim); font-size: 0.82rem; }
   .day-summary .right { display: flex; align-items: center; gap: 12px; }
-  .reorder-toggle {
-    background: none; border: none; color: var(--text-dim);
-    font-size: 0.82rem; font-weight: 700; cursor: pointer; padding: 2px 0;
-  }
-  .reorder-toggle.on { color: var(--accent); }
 
   .order-card {
     background: var(--surface); border: 1px solid var(--border);
@@ -129,13 +124,23 @@
     font-size: 0.7rem; font-weight: 800; vertical-align: 1px;
   }
 
-  .reorder-btns { display: flex; gap: 6px; }
-  .reorder-btns button {
-    width: 40px; height: 40px; border-radius: 10px;
-    border: 1px solid var(--border); background: var(--surface-2);
-    color: var(--text); font-size: 1rem; cursor: pointer;
+  .grip {
+    flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center;
+    width: 34px; align-self: stretch;
+    margin: -13px -6px -13px 0; padding: 0 4px;
+    color: var(--text-dim); font-size: 1.05rem; line-height: 1;
+    cursor: grab; touch-action: none; user-select: none;
   }
-  .reorder-btns button:disabled { opacity: 0.25; }
+  .grip:active { cursor: grabbing; color: var(--accent); }
+  .card.dragging {
+    position: relative; z-index: 30;
+    border-color: var(--accent);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+    opacity: 0.97;
+  }
+  .card.dragging .grip { color: var(--accent); }
+  .card.drag-settle { transition: transform 0.18s ease; }
 
   .hint {
     background: rgba(62, 207, 142, 0.1);
@@ -623,7 +628,6 @@
   let activeCat = state.ui.activeCat || BASE_CATEGORIES[0].id;
   let openCards = new Set();     // exercise ids with expanded card
   let openHistories = new Set(); // exercise ids with history shown
-  let reorderMode = false;       // when true, cards show up/down controls
   let pendingNotes = new Map();  // exercise id -> note text typed but not yet logged
 
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
@@ -753,17 +757,84 @@
     toast('Order matched to last session');
   }
 
-  // Move an exercise up/down among its category siblings in state.exercises.
-  function moveExercise(ex, dir) {
-    const siblings = state.exercises.filter(e => e.category === ex.category);
-    const pos = siblings.indexOf(ex);
-    const swapWith = siblings[pos + dir];
-    if (!swapWith) return;
-    const i = state.exercises.indexOf(ex);
-    const j = state.exercises.indexOf(swapWith);
-    state.exercises[i] = swapWith;
-    state.exercises[j] = ex;
+  // Drag-to-reorder: dragging is driven from the card's grip handle, so normal
+  // scrolling and taps elsewhere on the card are unaffected. The DOM is
+  // reordered live as you pass a neighbour's midpoint; state is written once
+  // on release.
+  function attachDrag(handle, card) {
+    handle.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const container = card.parentElement;
+      const cardsOf = () => [...container.children].filter(el => el.classList.contains('card'));
+      if (cardsOf().length < 2) return;
+
+      let anchorY = e.clientY;
+      let moved = false;
+      card.classList.add('dragging');
+      card.classList.remove('drag-settle');
+      // Listen on window rather than capturing on the handle: reordering moves
+      // the card (and the handle inside it) in the DOM, which releases pointer
+      // capture and would otherwise strand the drag mid-gesture.
+
+      const onMove = ev => {
+        const dy = ev.clientY - anchorY;
+        if (!moved && Math.abs(dy) < 3) return;
+        moved = true;
+        card.style.transform = `translateY(${dy}px)`;
+
+        const rect = card.getBoundingClientRect();
+        const mid = rect.top + rect.height / 2;
+        for (const sib of cardsOf()) {
+          if (sib === card) continue;
+          const r = sib.getBoundingClientRect();
+          const sibMid = r.top + r.height / 2;
+          const sibIsBelow = !!(card.compareDocumentPosition(sib) & Node.DOCUMENT_POSITION_FOLLOWING);
+          // Swap only once the card's centre passes the neighbour's centre,
+          // in the direction of travel — otherwise it re-inserts in place.
+          const passed = sibIsBelow ? mid > sibMid : mid < sibMid;
+          if (!passed) continue;
+          container.insertBefore(card, sibIsBelow ? sib.nextSibling : sib);
+          // re-anchor so the card stays under the finger after the DOM moves
+          anchorY = ev.clientY;
+          card.style.transform = 'translateY(0px)';
+          break;
+        }
+      };
+
+      const finish = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', finish);
+        window.removeEventListener('pointercancel', finish);
+        card.classList.remove('dragging');
+        card.classList.add('drag-settle');
+        card.style.transform = '';
+        setTimeout(() => card.classList.remove('drag-settle'), 200);
+        if (!moved) return;
+        commitCardOrder(cardsOf());
+      };
+
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', finish);
+      window.addEventListener('pointercancel', finish);
+    });
+  }
+
+  // Write the on-screen card order back into state.exercises, leaving the
+  // other categories' entries exactly where they are.
+  function commitCardOrder(cards) {
+    const ids = cards.map(c => c.dataset.exId).filter(Boolean);
+    if (!ids.length) return;
+    const byId = new Map(state.exercises.map(e => [e.id, e]));
+    const ordered = ids.map(id => byId.get(id)).filter(Boolean);
+    if (ordered.length !== ids.length) return; // stale DOM; leave state alone
+    const next = state.exercises.slice();
+    let k = 0;
+    next.forEach((e, i) => { if (e.category === activeCat) next[i] = ordered[k++]; });
+    if (k !== ordered.length) return;
+    state.exercises = next;
     dataChanged(); render();
+    toast('Order saved');
   }
 
   function fmtDate(key) {
@@ -925,14 +996,13 @@
       `<span class="count">${exs.length} exercise${exs.length === 1 ? '' : 's'}</span>` +
       `<span class="right">` +
       (loggedToday ? `<span class="count" style="color:var(--green)">✓ ${loggedToday} logged today</span>` : '') +
-      `<button class="reorder-toggle ${reorderMode ? 'on' : ''}" id="reorderToggle">${reorderMode ? '✓ Done' : '⇅ Reorder'}</button>` +
+      `<span class="count">drag ⠿ to reorder</span>` +
       `</span>`;
     $main.appendChild(summary);
-    summary.querySelector('#reorderToggle').onclick = () => { reorderMode = !reorderMode; render(); };
 
     // The order this muscle group was actually done in, last completed workout.
     const lastOrder = lastWorkoutOrder(exs);
-    if (lastOrder && !reorderMode) {
+    if (lastOrder) {
       const box = document.createElement('div');
       box.className = 'order-card';
 
@@ -996,6 +1066,7 @@
   function renderCard(ex, lastOrder) {
     const card = document.createElement('div');
     card.className = 'card' + (openCards.has(ex.id) ? ' open' : '');
+    card.dataset.exId = ex.id;
     const orderPos = lastOrder && lastOrder.posById.get(ex.id);
     const badge = orderPos ? `<span class="ex-order-badge" title="You did this ${orderPos}${ordinalSuffix(orderPos)} last session">#${orderPos}</span>` : '';
 
@@ -1026,28 +1097,20 @@
       metaHtml = `No sessions yet — log your first`;
     }
 
-    if (reorderMode) {
-      head.innerHTML = `<div><div class="ex-name">${badge}${escapeHtml(ex.name)}</div><div class="ex-meta">${metaHtml}</div></div>`;
-      const btns = document.createElement('div');
-      btns.className = 'reorder-btns';
-      const siblings = state.exercises.filter(e => e.category === ex.category);
-      const pos = siblings.indexOf(ex);
-      const up = document.createElement('button');
-      up.textContent = '↑';
-      up.disabled = pos === 0;
-      up.onclick = e => { e.stopPropagation(); moveExercise(ex, -1); };
-      const down = document.createElement('button');
-      down.textContent = '↓';
-      down.disabled = pos === siblings.length - 1;
-      down.onclick = e => { e.stopPropagation(); moveExercise(ex, 1); };
-      btns.appendChild(up); btns.appendChild(down);
-      head.appendChild(btns);
-      card.appendChild(head);
-      return card;
-    }
-
-    head.innerHTML = `<div><div class="ex-name">${badge}${escapeHtml(ex.name)}</div><div class="ex-meta">${metaHtml}</div></div><span class="chev">▼</span>`;
-    head.onclick = () => {
+    head.innerHTML = `<div><div class="ex-name">${badge}${escapeHtml(ex.name)}</div><div class="ex-meta">${metaHtml}</div></div>`;
+    const right = document.createElement('div');
+    right.style.cssText = 'display:flex;align-items:center;gap:2px';
+    right.innerHTML = `<span class="chev">▼</span>`;
+    const grip = document.createElement('span');
+    grip.className = 'grip';
+    grip.textContent = '⠿';
+    grip.title = 'Drag to reorder';
+    grip.setAttribute('aria-label', 'Drag to reorder ' + ex.name);
+    attachDrag(grip, card);
+    right.appendChild(grip);
+    head.appendChild(right);
+    head.onclick = e => {
+      if (e.target.closest('.grip')) return;
       if (openCards.has(ex.id)) openCards.delete(ex.id); else openCards.add(ex.id);
       render();
     };
