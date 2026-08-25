@@ -459,6 +459,7 @@
   .sync-pill.error .sync-dot { background: var(--red); }
   .sync-status-line { font-size: 0.82rem; color: var(--text-dim); margin-bottom: 14px; min-height: 1.2em; }
   .sync-status-line.ok { color: var(--green); }
+  .sync-status-line.warn { color: var(--amber); }
   .sync-status-line.error { color: var(--red); }
 
   .toast {
@@ -1550,6 +1551,10 @@
     } else if (lastSyncError) {
       cls = 'err';
       msg = '⚠️ Saved on this device, but the backup to Google Sheets failed (' + lastSyncError + '). It will retry automatically when you’re back online.';
+    } else if (state.syncMeta.lastSyncTs && state.syncMeta.unconfirmed) {
+      msg = '📤 Saved on this device and sent to your Google Sheet at ' +
+        new Date(state.syncMeta.lastSyncTs).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) +
+        '. This browser blocks reading Google’s reply, so check the sheet to confirm it arrived.';
     } else if (state.syncMeta.lastSyncTs) {
       cls = 'ok';
       msg = '✅ Saved on this device and backed up to your Google Sheet at ' +
@@ -1733,6 +1738,26 @@
     });
   }
 
+  // Posts to the Apps Script endpoint. Some browsers (notably Firefox with
+  // strict tracking protection) block reading Google's cross-origin reply even
+  // though the request itself goes through. In that case we re-send as an
+  // opaque no-cors request so the data still reaches the sheet, and report the
+  // sync as unconfirmed rather than failed.
+  async function postToSheet(url, body) {
+    try {
+      const res = await fetch(url, { method: 'POST', body });
+      const out = await res.json();
+      if (!out.ok) throw new Error(out.error || 'Sheet script returned an error');
+      return { confirmed: true, out };
+    } catch (e) {
+      const msg = (e && e.message) || '';
+      const looksBlocked = /NetworkError|Failed to fetch|Load failed|CORS|JSON/i.test(msg);
+      if (!looksBlocked) throw e;
+      await fetch(url, { method: 'POST', body, mode: 'no-cors' });
+      return { confirmed: false };
+    }
+  }
+
   async function syncNow() {
     const url = sheetsUrl();
     if (!url) return;
@@ -1740,11 +1765,10 @@
     syncInFlight = true;
     renderSyncPill('syncing');
     try {
-      const res = await fetch(url, { method: 'POST', body: buildSyncPayload() });
-      const out = await res.json();
-      if (!out.ok) throw new Error(out.error || 'Sheet script returned an error');
+      const r = await postToSheet(url, buildSyncPayload());
       state.syncMeta.dirty = false;
       state.syncMeta.lastSyncTs = Date.now();
+      state.syncMeta.unconfirmed = !r.confirmed;
       lastSyncError = null;
       save();
     } catch (e) {
@@ -1758,10 +1782,7 @@
   }
 
   async function pingSheet(url) {
-    const res = await fetch(url, { method: 'POST', body: JSON.stringify({ type: 'ping' }) });
-    const out = await res.json();
-    if (!out.ok) throw new Error(out.error || 'Unexpected reply from script');
-    return out;
+    return postToSheet(url, JSON.stringify({ type: 'ping' }));
   }
 
   function syncStatus() {
@@ -1774,7 +1795,9 @@
       const label = todayKey(d) === todayKey()
         ? d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
         : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-      return { cls: 'ok', text: `Synced ${label}` };
+      return state.syncMeta.unconfirmed
+        ? { cls: 'pending', text: `Sent ${label} (unconfirmed)` }
+        : { cls: 'ok', text: `Synced ${label}` };
     }
     return { cls: '', text: 'Sheets sync: ready' };
   }
@@ -1833,16 +1856,22 @@
     }
     renderSettingsStatus('Testing connection…', '');
     try {
-      const out = await pingSheet(url);
+      const r = await pingSheet(url);
       state.settings.sheetsUrl = url;
       state.syncMeta.dirty = true;
       lastSyncError = null;
       save();
-      renderSettingsStatus(`Connected to “${out.sheet || 'your sheet'}” ✓ — syncing now…`, 'ok');
-      toast('Google Sheets connected');
+      if (r.confirmed) {
+        renderSettingsStatus(`Connected to “${(r.out && r.out.sheet) || 'your sheet'}” ✓ — syncing now…`, 'ok');
+        toast('Google Sheets connected');
+      } else {
+        renderSettingsStatus('Saved, and your data is being sent. This browser blocks reading Google’s reply, so it can’t be confirmed here — open your sheet and check the “Workout Log” tab fills in. (Chrome usually confirms properly.)', 'warn');
+        toast('Sheets URL saved');
+      }
       scheduleSync();
     } catch (e) {
-      renderSettingsStatus('Couldn’t connect: ' + ((e && e.message) || 'network error') + '. Check the deployment is set to “Anyone” access.', 'error');
+      renderSettingsStatus('Couldn’t reach the script: ' + ((e && e.message) || 'network error') +
+        '. Open the /exec URL in a browser tab — if it doesn’t show “sync endpoint is live”, re-deploy with access set to “Anyone”.', 'error');
     }
   };
 
