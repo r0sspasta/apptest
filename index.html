@@ -384,6 +384,51 @@
   }
   .seg button.on { background: var(--accent-soft); color: var(--accent); }
 
+  .check-row {
+    display: flex; gap: 10px; align-items: flex-start;
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 11px 12px; margin-bottom: 18px;
+    cursor: pointer;
+  }
+  .check-row input { width: 20px; height: 20px; margin-top: 1px; flex: 0 0 auto; accent-color: var(--accent); }
+  .check-row strong { display: block; font-size: 0.9rem; font-weight: 700; }
+  .check-row em { display: block; font-style: normal; font-size: 0.78rem; color: var(--text-dim); margin-top: 2px; }
+  .check-row.hidden { display: none; }
+
+  .modal input[type="number"] {
+    width: 100%; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 10px;
+    color: var(--text); font-size: 1rem; padding: 13px 12px;
+    outline: none; margin-bottom: 14px;
+  }
+  .modal input[type="number"]:focus { border-color: var(--accent); }
+  .set-edit-grid { display: flex; gap: 10px; }
+  .set-edit-grid > div { flex: 1; }
+  .set-edit-grid input { text-align: center; margin-bottom: 2px; }
+  .set-edit-grid .field-label { margin-bottom: 12px; }
+  .danger-btn { color: var(--red) !important; }
+
+  .chip-main {
+    background: none; border: none; color: inherit;
+    font-size: 0.85rem; font-weight: 600; cursor: pointer;
+    padding: 0; font-family: inherit;
+  }
+  .sets-target { color: var(--amber); font-weight: 700; }
+  .sets-done { color: var(--green); font-weight: 700; }
+
+  .card.done-today { opacity: 0.72; }
+  .card.done-today .ex-name::after {
+    content: ' ✓'; color: var(--green); font-weight: 800;
+  }
+  .done-divider {
+    display: flex; align-items: center; gap: 10px;
+    margin: 6px 2px 12px; color: var(--text-dim);
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.6px;
+  }
+  .done-divider::before, .done-divider::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+
   .pr-cat {
     font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px;
     color: var(--text-dim); margin: 16px 0 4px;
@@ -516,6 +561,48 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" id="modalCancel">Cancel</button>
       <button class="btn btn-primary" id="modalSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="exEditBackdrop">
+  <div class="modal">
+    <h2>Edit exercise</h2>
+    <div class="settings-h">Name</div>
+    <input type="text" id="exEditName" autocomplete="off">
+    <div class="settings-h">How it's measured</div>
+    <div class="seg" id="exModeSeg">
+      <button data-mode="weight">Weighted</button>
+      <button data-mode="bodyweight">Bodyweight</button>
+    </div>
+    <label class="check-row" id="perHandRow">
+      <input type="checkbox" id="exPerHand">
+      <span>
+        <strong>Weight is per hand</strong>
+        <em>For dumbbells etc. — log what's in one hand; totals count both.</em>
+      </span>
+    </label>
+    <div class="settings-h">Target sets</div>
+    <input type="number" id="exTargetSets" min="1" max="20" placeholder="auto (from last session)">
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn btn-ghost" id="exEditCancel">Cancel</button>
+      <button class="btn btn-primary" id="exEditSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="setEditBackdrop">
+  <div class="modal">
+    <h2 id="setEditTitle">Edit set</h2>
+    <div class="set-edit-grid">
+      <div><input type="number" id="setEditWeight" step="any" min="0"><span class="field-label" id="setEditWeightLabel">Weight</span></div>
+      <div><input type="number" id="setEditReps" min="1"><span class="field-label">Reps</span></div>
+    </div>
+    <input type="text" id="setEditNote" placeholder="📝 Note (optional)" maxlength="120" autocomplete="off">
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn btn-ghost" id="setEditCancel">Cancel</button>
+      <button class="btn btn-ghost danger-btn" id="setEditDelete">Delete</button>
+      <button class="btn btn-primary" id="setEditSave">Save</button>
     </div>
   </div>
 </div>
@@ -698,6 +785,15 @@
       .map(([date, sets]) => ({ date, sets }));
   }
 
+  function exById(id) { return state.exercises.find(e => e.id === id) || null; }
+  function isBW(ex) { return !!(ex && ex.mode === 'bodyweight'); }
+  function isPerHand(ex) { return !!(ex && ex.perHand); }
+
+  // The number an exercise progresses on: reps for bodyweight work, weight
+  // otherwise. PRs, charts, hints and "best" all key off this.
+  function setMetric(ex, s) { return isBW(ex) ? (s.reps || 0) : s.weight; }
+  function bestMetric(ex, sets) { return Math.max(...sets.map(s => setMetric(ex, s))); }
+
   function bestWeight(sets) { return Math.max(...sets.map(s => s.weight)); }
 
   // Most recent session BEFORE today — the "last time" reference.
@@ -821,18 +917,30 @@
     });
   }
 
-  // Write the on-screen card order back into state.exercises, leaving the
-  // other categories' entries exactly where they are.
+  // Write the on-screen card order back into state.exercises.
+  //
+  // Exercises already done today are displayed sunk to the bottom, so the
+  // visible order is a permutation of the stored one. To avoid a drag
+  // silently rewriting the stored routine, each group (pending / done) keeps
+  // the slots it already occupied and only its internal order is updated.
   function commitCardOrder(cards) {
     const ids = cards.map(c => c.dataset.exId).filter(Boolean);
     if (!ids.length) return;
     const byId = new Map(state.exercises.map(e => [e.id, e]));
-    const ordered = ids.map(id => byId.get(id)).filter(Boolean);
-    if (ordered.length !== ids.length) return; // stale DOM; leave state alone
+    const dragged = ids.map(id => byId.get(id)).filter(Boolean);
+    if (dragged.length !== ids.length) return; // stale DOM; leave state alone
+
+    const wasDone = e => todaySets(e.id).length > 0;
+    const pendingNew = dragged.filter(e => !wasDone(e));
+    const doneNew = dragged.filter(wasDone);
+
+    let pi = 0, di = 0;
     const next = state.exercises.slice();
-    let k = 0;
-    next.forEach((e, i) => { if (e.category === activeCat) next[i] = ordered[k++]; });
-    if (k !== ordered.length) return;
+    next.forEach((e, i) => {
+      if (e.category !== activeCat) return;
+      next[i] = wasDone(e) ? doneNew[di++] : pendingNew[pi++];
+    });
+    if (pi !== pendingNew.length || di !== doneNew.length) return;
     state.exercises = next;
     dataChanged(); render();
     toast('Order saved');
@@ -857,6 +965,21 @@
 
   function fmtWeight(kg) { return roundW(toDisplay(kg)) + ' ' + unit(); }
 
+  // Headline value for an exercise: reps for bodyweight, weight otherwise.
+  function fmtBest(ex, sets) {
+    if (isBW(ex)) {
+      const r = bestMetric(ex, sets);
+      const added = Math.max(...sets.map(s => s.weight || 0));
+      return `${r} reps` + (added > 0 ? ` +${fmtWeight(added)}${isPerHand(ex) ? '/hand' : ''}` : '');
+    }
+    return fmtWeight(bestMetric(ex, sets)) + (isPerHand(ex) ? '/hand' : '');
+  }
+
+  function handSuffix(ex) { return isPerHand(ex) ? '/hand' : ''; }
+
+  // Convert a metric value for display (reps pass through; weights convert).
+  function toDisplayMetric(ex, v) { return isBW(ex) ? v : toDisplay(v); }
+
   // Collapse identical (weight, reps) sets into groups, keeping the order of
   // first occurrence. Used for the chips and all sets-summary strings.
   function groupSets(sets) {
@@ -869,15 +992,19 @@
     return groups;
   }
 
-  function setsSummary(sets) {
-    return groupSets(sets).map(g =>
-      `${roundW(toDisplay(g.weight))}${g.reps ? '×' + g.reps : ''}${g.count > 1 ? ` (×${g.count})` : ''}`
-    ).join(', ');
+  function setsSummary(sets, ex) {
+    return groupSets(sets).map(g => {
+      const body = isBW(ex)
+        ? `${g.reps || 0}${g.weight ? ' +' + roundW(toDisplay(g.weight)) : ''}`
+        : `${roundW(toDisplay(g.weight))}${g.reps ? '×' + g.reps : ''}`;
+      return body + (g.count > 1 ? ` (×${g.count})` : '');
+    }).join(', ');
   }
 
   // Rep outlier in the last session: at one weight, most sets hit the same rep
   // count but a minority fell short (e.g. 3×10 and one set of 7).
   function repOutlier(exId) {
+    if (isBW(exById(exId))) return null; // reps are the metric itself here
     const last = lastSession(exId);
     if (!last) return null;
     const byWeight = new Map();
@@ -903,24 +1030,52 @@
   // Double progression: same top weight two sessions running, 8+ reps at that
   // weight both times → suggest the next increment.
   function progressionHint(exId) {
-    if (repOutlier(exId)) return null; // don't suggest adding weight over uneven sets
+    if (repOutlier(exId)) return null; // don't suggest more over uneven sets
+    const ex = exById(exId);
     const sessions = sessionsFor(exId).filter(s => s.date !== todayKey());
     if (sessions.length < 2) return null;
     const [s1, s2] = sessions;
+
+    if (isBW(ex)) {
+      // Bodyweight: progress on reps once the same rep count is held twice.
+      const best = bestMetric(ex, s1.sets);
+      if (!best || bestMetric(ex, s2.sets) !== best) return null;
+      const full = sess => sess.sets.filter(x => (x.reps || 0) >= best).length >= 2;
+      if (!full(s1) || !full(s2)) return null;
+      return { bw: true, last: `${best} reps`, target: `${best + 2} reps` };
+    }
+
     const best = bestWeight(s1.sets);
     if (bestWeight(s2.sets) !== best) return null;
     const hitReps = sess => sess.sets.some(x => x.weight === best && (x.reps || 0) >= 8);
     if (!hitReps(s1) || !hitReps(s2)) return null;
     const inc = unit() === 'lb' ? 5 : 2.5;
-    return { lastDisp: roundW(toDisplay(best)), targetDisp: roundW(toDisplay(best) + inc) };
+    const suffix = ' ' + unit() + handSuffix(ex);
+    return {
+      targetDisp: roundW(toDisplay(best) + inc),
+      last: roundW(toDisplay(best)) + suffix,
+      target: roundW(toDisplay(best) + inc) + suffix,
+    };
   }
 
-  function allTimeBestKg(exId) {
+  // All-time best on the exercise's own progression metric (reps or weight).
+  function allTimeBest(exId) {
+    const ex = exById(exId);
     let best = null;
     for (const l of state.logs) {
-      if (l.exerciseId === exId && (best === null || l.weight > best)) best = l.weight;
+      if (l.exerciseId !== exId) continue;
+      const v = setMetric(ex, l);
+      if (best === null || v > best) best = v;
     }
     return best;
+  }
+
+  // How many sets this exercise is normally done for, learned from the last
+  // session; used for the "Set 2 of 4" target.
+  function targetSets(exId) {
+    if (typeof (exById(exId) || {}).targetSets === 'number') return exById(exId).targetSets;
+    const last = lastSession(exId);
+    return last ? last.sets.length : null;
   }
 
   // ---------- rendering ----------
@@ -1025,7 +1180,7 @@
         const chip = document.createElement('span');
         chip.className = 'order-chip';
         chip.innerHTML = `<span class="n">${i + 1}</span> ${escapeHtml(item.name)}` +
-          (sets.length ? ` <span class="sets">${escapeHtml(setsSummary(sets))}</span>` : '');
+          (sets.length ? ` <span class="sets">${escapeHtml(setsSummary(sets, exById(item.id)))}</span>` : '');
         strip.appendChild(chip);
       });
       box.appendChild(strip);
@@ -1039,7 +1194,21 @@
       $main.appendChild(empty);
     }
 
-    for (const ex of exs) $main.appendChild(renderCard(ex, lastOrder));
+    // Exercises already done today sink to the bottom so what's left is on top.
+    const pending = exs.filter(e => todaySets(e.id).length === 0);
+    const doneToday = exs.filter(e => todaySets(e.id).length > 0);
+    for (const ex of pending) $main.appendChild(renderCard(ex, lastOrder));
+    if (doneToday.length && pending.length) {
+      const div = document.createElement('div');
+      div.className = 'done-divider';
+      div.textContent = `done today (${doneToday.length})`;
+      $main.appendChild(div);
+    }
+    for (const ex of doneToday) {
+      const card = renderCard(ex, lastOrder);
+      card.classList.add('done-today');
+      $main.appendChild(card);
+    }
 
     const sessionSummary = todaySessionSummary();
     if (sessionSummary) {
@@ -1081,16 +1250,17 @@
 
     let metaHtml;
     if (last) {
-      const lastBest = bestWeight(last.sets);
+      const lastBest = bestMetric(ex, last.sets);
       let deltaHtml = '';
       if (today.length > 0) {
-        const todayBest = bestWeight(today);
-        const diff = Math.round((todayBest - lastBest) * 100) / 100;
-        if (diff > 0) deltaHtml = ` · <span class="delta-up">▲ +${diff} kg today</span>`;
-        else if (diff < 0) deltaHtml = ` · <span class="delta-down">▼ ${diff} kg today</span>`;
+        const todayBest = bestMetric(ex, today);
+        const diff = Math.round((toDisplayMetric(ex, todayBest) - toDisplayMetric(ex, lastBest)) * 100) / 100;
+        const un = isBW(ex) ? ' reps' : ' ' + unit();
+        if (diff > 0) deltaHtml = ` · <span class="delta-up">▲ +${diff}${un} today</span>`;
+        else if (diff < 0) deltaHtml = ` · <span class="delta-down">▼ ${diff}${un} today</span>`;
         else deltaHtml = ` · <span class="delta-same">= matched today</span>`;
       }
-      metaHtml = `Last: <span class="lastw">${fmtWeight(lastBest)}</span> · ${escapeHtml(setsSummary(last.sets))} · ${fmtDate(last.date)}${deltaHtml}` +
+      metaHtml = `Last: <span class="lastw">${fmtBest(ex, last.sets)}</span> · ${escapeHtml(setsSummary(last.sets, ex))} · ${fmtDate(last.date)}${deltaHtml}` +
         (outlier ? ` · <span class="meta-warn">⚠ uneven sets</span>` : '');
     } else if (today.length > 0) {
       metaHtml = `First session logged today 💪`;
@@ -1127,7 +1297,7 @@
       const lowStr = outlier.lowReps.length === 1
         ? `1 set fell to ${outlier.lowReps[0]}`
         : `${outlier.lowReps.length} sets fell to ${outlier.lowReps.join(', ')}`;
-      w.textContent = `⚠️ Last time at ${roundW(toDisplay(outlier.weight))} ${unit()}: ${outlier.modeCount} sets hit ${outlier.mode} reps but ${lowStr} — aim for ${outlier.totalSets}×${outlier.mode} today before adding weight.`;
+      w.textContent = `⚠️ Last time at ${roundW(toDisplay(outlier.weight))} ${unit()}${handSuffix(ex)}: ${outlier.modeCount} sets hit ${outlier.mode} reps but ${lowStr} — aim for ${outlier.totalSets}×${outlier.mode} today before adding weight.`;
       body.appendChild(w);
     }
 
@@ -1135,27 +1305,40 @@
     if (hint) {
       const h = document.createElement('div');
       h.className = 'hint';
-      h.textContent = `💡 Try ${hint.targetDisp} ${unit()} today — you've hit ${hint.lastDisp} ${unit()} for 8+ reps two sessions running.`;
+      h.textContent = hint.bw
+        ? `💡 Try ${hint.target} today — you've held ${hint.last} two sessions running.`
+        : `💡 Try ${hint.target} today — you've hit ${hint.last} for 8+ reps two sessions running.`;
       body.appendChild(h);
     }
 
+    const target = targetSets(ex.id);
     if (today.length > 0) {
       const wrap = document.createElement('div');
       wrap.className = 'today-sets';
-      wrap.innerHTML = `<div class="today-label">Today’s sets</div>`;
+      const done = today.length;
+      const label = target
+        ? (done >= target
+            ? `Today’s sets · <span class="sets-done">✓ ${done} of ${target} done</span>`
+            : `Today’s sets · <span class="sets-target">${done} of ${target}</span>`)
+        : 'Today’s sets';
+      wrap.innerHTML = `<div class="today-label">${label}</div>`;
       for (const g of groupSets(today)) {
         const chip = document.createElement('span');
         chip.className = 'set-chip';
-        chip.innerHTML = `<span>${g.count > 1 ? g.count + '× ' : ''}${fmtWeight(g.weight)}${g.reps ? ' × ' + g.reps : ''}${g.hasNote ? ' 📝' : ''}</span>`;
+        const val = isBW(ex)
+          ? `${g.reps || 0} reps${g.weight ? ' +' + fmtWeight(g.weight) : ''}`
+          : `${fmtWeight(g.weight)}${handSuffix(ex)}${g.reps ? ' × ' + g.reps : ''}`;
+        const main = document.createElement('button');
+        main.className = 'chip-main';
+        main.innerHTML = `${g.count > 1 ? g.count + '× ' : ''}${val}${g.hasNote ? ' 📝' : ''}`;
+        main.title = 'Tap to edit this set';
+        main.onclick = () => openSetEditor(g.ids[g.ids.length - 1], g.count);
+        chip.appendChild(main);
         const del = document.createElement('button');
         del.className = 'del-set';
         del.textContent = '✕';
         del.title = g.count > 1 ? 'Delete one of these sets' : 'Delete set';
-        del.onclick = () => {
-          const removeId = g.ids[g.ids.length - 1];
-          state.logs = state.logs.filter(l => l.id !== removeId);
-          dataChanged(); render();
-        };
+        del.onclick = () => deleteSet(g.ids[g.ids.length - 1]);
         chip.appendChild(del);
         wrap.appendChild(chip);
       }
@@ -1164,7 +1347,10 @@
       const lastSet = today[today.length - 1];
       const repeat = document.createElement('button');
       repeat.className = 'repeat-btn';
-      repeat.innerHTML = `↻ Same again <span style="font-weight:600;opacity:.85">(${roundW(toDisplay(lastSet.weight))}${lastSet.reps ? '×' + lastSet.reps : ''})</span>`;
+      const rptVal = isBW(ex)
+        ? `${lastSet.reps || 0} reps`
+        : `${roundW(toDisplay(lastSet.weight))}${lastSet.reps ? '×' + lastSet.reps : ''}`;
+      repeat.innerHTML = `↻ Same again <span style="font-weight:600;opacity:.85">(${rptVal})</span>`;
       repeat.onclick = () => {
         state.logs.push({
           id: uid(),
@@ -1175,7 +1361,8 @@
           ts: Date.now(),
         });
         dataChanged(); render();
-        toast(`Set ${today.length + 1} logged — same again`);
+        const n = today.length + 1;
+        toast(target ? `Set ${n} of ${target} logged` : `Set ${n} logged — same again`);
       };
       wrap.appendChild(repeat);
 
@@ -1200,9 +1387,13 @@
     wInput.inputMode = 'decimal';
     wInput.step = 'any';
     wInput.min = '0';
-    wInput.placeholder = hint ? String(hint.targetDisp) : (last ? String(roundW(toDisplay(bestWeight(last.sets)))) : unit());
+    wInput.placeholder = isBW(ex)
+      ? '+0'
+      : (hint && hint.targetDisp ? String(hint.targetDisp) : (last ? String(roundW(toDisplay(bestWeight(last.sets)))) : unit()));
     wField.appendChild(wInput);
-    wField.insertAdjacentHTML('beforeend', `<span class="field-label">Weight (${unit()})</span>`);
+    wField.insertAdjacentHTML('beforeend', isBW(ex)
+      ? `<span class="field-label">Added ${unit()} (opt.)</span>`
+      : `<span class="field-label">Weight (${unit()}${handSuffix(ex)})</span>`);
 
     const rField = document.createElement('div');
     rField.className = 'field';
@@ -1210,21 +1401,27 @@
     rInput.type = 'number';
     rInput.inputMode = 'numeric';
     rInput.min = '1';
-    rInput.placeholder = 'reps';
+    rInput.placeholder = isBW(ex) && last ? String(bestMetric(ex, last.sets)) : 'reps';
     rField.appendChild(rInput);
-    rField.insertAdjacentHTML('beforeend', '<span class="field-label">Reps (opt.)</span>');
+    rField.insertAdjacentHTML('beforeend',
+      `<span class="field-label">Reps${isBW(ex) ? '' : ' (opt.)'}</span>`);
 
     const logBtn = document.createElement('button');
     logBtn.className = 'btn btn-log';
     logBtn.textContent = 'Log set';
     const doLog = () => {
-      const entered = parseFloat(wInput.value);
-      if (isNaN(entered) || entered < 0) { wInput.focus(); return; }
-      const weightKg = fromDisplay(entered);
       const reps = parseInt(rInput.value, 10);
+      const entered = parseFloat(wInput.value);
+      // Bodyweight: reps are required, added weight optional (defaults to 0).
+      if (isBW(ex)) {
+        if (isNaN(reps) || reps < 1) { rInput.focus(); return; }
+      } else if (isNaN(entered) || entered < 0) {
+        wInput.focus(); return;
+      }
+      const weightKg = isNaN(entered) ? 0 : fromDisplay(entered);
       const note = (pendingNotes.get(ex.id) || '').trim();
-      const prevBest = allTimeBestKg(ex.id);
-      state.logs.push({
+      const prevBest = allTimeBest(ex.id);
+      const newSet = {
         id: uid(),
         exerciseId: ex.id,
         weight: weightKg,
@@ -1232,13 +1429,16 @@
         note: note || undefined,
         date: todayKey(),
         ts: Date.now(),
-      });
+      };
+      state.logs.push(newSet);
       pendingNotes.delete(ex.id);
       dataChanged(); render();
-      if (prevBest !== null && weightKg > prevBest) {
-        celebratePR(`🎉 NEW PR — ${ex.name} ${fmtWeight(weightKg)}!`);
+      const metric = setMetric(ex, newSet);
+      const shown = isBW(ex) ? `${reps} reps` : fmtWeight(weightKg) + handSuffix(ex);
+      if (prevBest !== null && metric > prevBest) {
+        celebratePR(`🎉 NEW PR — ${ex.name} ${shown}!`);
       } else {
-        toast(`Logged ${fmtWeight(weightKg)} — ${ex.name}`);
+        toast(`Logged ${shown} — ${ex.name}`);
       }
     };
     logBtn.onclick = doLog;
@@ -1292,13 +1492,11 @@
     };
     actions.appendChild(histBtn);
 
-    const renameBtn = document.createElement('button');
-    renameBtn.className = 'link-btn';
-    renameBtn.textContent = 'Rename';
-    renameBtn.onclick = () => openModal('Rename exercise', ex.name, name => {
-      ex.name = name; dataChanged(); render();
-    });
-    actions.appendChild(renameBtn);
+    const editBtn = document.createElement('button');
+    editBtn.className = 'link-btn';
+    editBtn.textContent = 'Edit';
+    editBtn.onclick = () => openExerciseEditor(ex);
+    actions.appendChild(editBtn);
 
     const delBtn = document.createElement('button');
     delBtn.className = 'link-btn danger';
@@ -1322,15 +1520,15 @@
       if (sessions.length === 0) {
         hist.innerHTML = '<div class="hist-row"><span class="hist-date">No sessions logged yet.</span></div>';
       } else {
-        const allTimeBest = Math.max(...sessions.map(s => bestWeight(s.sets)));
+        const allBest = Math.max(...sessions.map(s => bestMetric(ex, s.sets)));
         for (const s of sessions.slice(0, 20)) {
-          const best = bestWeight(s.sets);
+          const best = bestMetric(ex, s.sets);
           const notes = s.sets.filter(x => x.note);
           const row = document.createElement('div');
           row.className = 'hist-row';
           row.innerHTML =
             `<span class="hist-date">${fmtDate(s.date)}</span>` +
-            `<span class="hist-sets ${best === allTimeBest ? 'hist-best' : ''}">${escapeHtml(setsSummary(s.sets))} ${unit()}${best === allTimeBest ? ' ★' : ''}${notes.length ? ' 📝' : ''}</span>`;
+            `<span class="hist-sets ${best === allBest ? 'hist-best' : ''}">${escapeHtml(setsSummary(s.sets, ex))} ${isBW(ex) ? 'reps' : unit() + handSuffix(ex)}${best === allBest ? ' ★' : ''}${notes.length ? ' 📝' : ''}</span>`;
           hist.appendChild(row);
           for (const n of notes) {
             const noteEl = document.createElement('div');
@@ -1362,20 +1560,26 @@
       const ex = exById.get(l.exerciseId);
       if (!ex) continue;
       sets++;
-      if (l.reps) volumeKg += l.weight * l.reps;
+      // per-hand weights count both hands toward total volume
+      if (l.reps) volumeKg += l.weight * l.reps * (isPerHand(ex) ? 2 : 1);
       if (!seen.has(ex.id)) {
         seen.add(ex.id);
         const exLogs = logs.filter(x => x.exerciseId === ex.id);
         const arr = byCat.get(ex.category) || [];
-        arr.push({ name: ex.name, sets: exLogs });
+        arr.push({ ex, name: ex.name, sets: exLogs });
         byCat.set(ex.category, arr);
-        // PR = today's best beats every earlier session's best
-        const todayBest = Math.max(...exLogs.map(x => x.weight));
+        // PR = today's best beats every earlier session's best, on this
+        // exercise's own metric (reps for bodyweight, weight otherwise)
+        const todayBest = bestMetric(ex, exLogs);
         let priorBest = null;
         for (const x of state.logs) {
-          if (x.exerciseId === ex.id && x.date !== tk && (priorBest === null || x.weight > priorBest)) priorBest = x.weight;
+          if (x.exerciseId !== ex.id || x.date === tk) continue;
+          const v = setMetric(ex, x);
+          if (priorBest === null || v > priorBest) priorBest = v;
         }
-        if (priorBest !== null && todayBest > priorBest) prs.push({ name: ex.name, weight: todayBest });
+        if (priorBest !== null && todayBest > priorBest) {
+          prs.push({ name: ex.name, label: isBW(ex) ? `${todayBest} reps` : fmtWeight(todayBest) + handSuffix(ex) });
+        }
       }
     }
     return { exercises: seen.size, sets, volumeKg, byCat, prs };
@@ -1428,6 +1632,24 @@
     toastTimer = setTimeout(() => $t.classList.remove('show'), 1800);
   }
 
+  // Toast with an inline undo action.
+  function toastUndo(msg, onUndo) {
+    const $t = document.getElementById('toast');
+    $t.textContent = msg + '  ';
+    const btn = document.createElement('button');
+    btn.textContent = 'UNDO';
+    btn.style.cssText = 'background:none;border:none;color:var(--accent);font-weight:800;font-size:0.85rem;cursor:pointer;padding:0';
+    btn.onclick = () => { $t.classList.remove('show'); onUndo(); };
+    $t.appendChild(btn);
+    $t.style.pointerEvents = 'auto';
+    $t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      $t.classList.remove('show');
+      $t.style.pointerEvents = 'none';
+    }, 6000);
+  }
+
   // ---------- PR celebration ----------
 
   function celebratePR(msg) {
@@ -1453,7 +1675,8 @@
   function renderSpark(exId) {
     const sessions = sessionsFor(exId).slice().reverse();
     if (sessions.length < 2) return null;
-    const data = sessions.slice(-15).map(s => ({ date: s.date, val: roundW(toDisplay(bestWeight(s.sets))) }));
+    const ex = exById(exId);
+    const data = sessions.slice(-15).map(s => ({ date: s.date, val: roundW(toDisplayMetric(ex, bestMetric(ex, s.sets))) }));
     const W = 340, H = 84, L = 10, R = 46, T = 14, B = 12;
     const vals = data.map(d => d.val);
     let lo = Math.min(...vals), hi = Math.max(...vals);
@@ -1477,7 +1700,8 @@
 
     const wrap = document.createElement('div');
     wrap.className = 'spark-wrap';
-    const baseCaption = `Best ${unit()} per session · amber dot = all-time best (${maxVal} ${unit()}) · tap for values`;
+    const un = isBW(ex) ? 'reps' : unit() + handSuffix(ex);
+    const baseCaption = `Best ${un} per session · amber dot = all-time best (${maxVal} ${un}) · tap for values`;
     wrap.innerHTML = svg + `<div class="spark-caption">${baseCaption}</div>`;
 
     const svgEl = wrap.querySelector('svg');
@@ -1487,12 +1711,125 @@
       const relX = (ev.clientX - rect.left) / rect.width * W;
       let nearest = pts[0];
       for (const p of pts) if (Math.abs(p.px - relX) < Math.abs(nearest.px - relX)) nearest = p;
-      cap.textContent = `${fmtDate(nearest.date)} — ${nearest.val} ${unit()}`;
+      cap.textContent = `${fmtDate(nearest.date)} — ${nearest.val} ${un}`;
     };
     svgEl.addEventListener('pointerdown', showNearest);
     svgEl.addEventListener('pointermove', ev => { if (ev.buttons) showNearest(ev); });
     svgEl.addEventListener('pointerleave', () => { cap.textContent = baseCaption; });
     return wrap;
+  }
+
+  // ---------- exercise editor ----------
+
+  const $exEditBackdrop = document.getElementById('exEditBackdrop');
+  let editingEx = null;
+  let editingMode = 'weight';
+
+  function renderExModeSeg() {
+    for (const b of document.querySelectorAll('#exModeSeg button')) {
+      b.classList.toggle('on', b.dataset.mode === editingMode);
+    }
+    // per-hand is about how a weight is held, so only for weighted work
+    document.getElementById('perHandRow').classList.toggle('hidden', editingMode !== 'weight');
+  }
+
+  function openExerciseEditor(ex) {
+    editingEx = ex;
+    editingMode = isBW(ex) ? 'bodyweight' : 'weight';
+    document.getElementById('exEditName').value = ex.name;
+    document.getElementById('exPerHand').checked = isPerHand(ex);
+    document.getElementById('exTargetSets').value = typeof ex.targetSets === 'number' ? ex.targetSets : '';
+    renderExModeSeg();
+    $exEditBackdrop.classList.add('show');
+  }
+  function closeExEditor() { $exEditBackdrop.classList.remove('show'); editingEx = null; }
+
+  document.getElementById('exModeSeg').addEventListener('click', e => {
+    const b = e.target.closest('button[data-mode]');
+    if (!b) return;
+    editingMode = b.dataset.mode;
+    renderExModeSeg();
+  });
+  document.getElementById('exEditCancel').onclick = closeExEditor;
+  $exEditBackdrop.addEventListener('click', e => { if (e.target === $exEditBackdrop) closeExEditor(); });
+  document.getElementById('exEditSave').onclick = () => {
+    if (!editingEx) return;
+    const name = document.getElementById('exEditName').value.trim();
+    if (!name) { document.getElementById('exEditName').focus(); return; }
+    const t = parseInt(document.getElementById('exTargetSets').value, 10);
+    editingEx.name = name;
+    if (editingMode === 'bodyweight') { editingEx.mode = 'bodyweight'; delete editingEx.perHand; }
+    else {
+      delete editingEx.mode;
+      if (document.getElementById('exPerHand').checked) editingEx.perHand = true;
+      else delete editingEx.perHand;
+    }
+    if (!isNaN(t) && t > 0) editingEx.targetSets = t; else delete editingEx.targetSets;
+    closeExEditor();
+    dataChanged(); render();
+    toast('Exercise updated');
+  };
+
+  // ---------- set editor & undo ----------
+
+  const $setEditBackdrop = document.getElementById('setEditBackdrop');
+  let editingSetId = null;
+  let lastDeleted = null;
+
+  function openSetEditor(setId, groupCount) {
+    const s = state.logs.find(l => l.id === setId);
+    if (!s) return;
+    const ex = exById(s.exerciseId);
+    editingSetId = setId;
+    document.getElementById('setEditTitle').textContent =
+      groupCount > 1 ? `Edit set (last of ${groupCount} identical)` : 'Edit set';
+    const wIn = document.getElementById('setEditWeight');
+    wIn.value = s.weight ? roundW(toDisplay(s.weight)) : (isBW(ex) ? '' : 0);
+    document.getElementById('setEditWeightLabel').textContent =
+      isBW(ex) ? `Added ${unit()} (opt.)` : `Weight (${unit()}${handSuffix(ex)})`;
+    document.getElementById('setEditReps').value = s.reps || '';
+    document.getElementById('setEditNote').value = s.note || '';
+    $setEditBackdrop.classList.add('show');
+  }
+  function closeSetEditor() { $setEditBackdrop.classList.remove('show'); editingSetId = null; }
+
+  document.getElementById('setEditCancel').onclick = closeSetEditor;
+  $setEditBackdrop.addEventListener('click', e => { if (e.target === $setEditBackdrop) closeSetEditor(); });
+  document.getElementById('setEditSave').onclick = () => {
+    const s = state.logs.find(l => l.id === editingSetId);
+    if (!s) { closeSetEditor(); return; }
+    const ex = exById(s.exerciseId);
+    const w = parseFloat(document.getElementById('setEditWeight').value);
+    const r = parseInt(document.getElementById('setEditReps').value, 10);
+    if (isBW(ex) && (isNaN(r) || r < 1)) { document.getElementById('setEditReps').focus(); return; }
+    if (!isBW(ex) && (isNaN(w) || w < 0)) { document.getElementById('setEditWeight').focus(); return; }
+    s.weight = isNaN(w) ? 0 : fromDisplay(w);
+    s.reps = isNaN(r) ? null : r;
+    const note = document.getElementById('setEditNote').value.trim();
+    if (note) s.note = note; else delete s.note;
+    closeSetEditor();
+    dataChanged(); render();
+    toast('Set updated');
+  };
+  document.getElementById('setEditDelete').onclick = () => {
+    const id = editingSetId;
+    closeSetEditor();
+    deleteSet(id);
+  };
+
+  // Deleting a set stashes it so an accidental tap can be undone.
+  function deleteSet(setId) {
+    const idx = state.logs.findIndex(l => l.id === setId);
+    if (idx < 0) return;
+    lastDeleted = { set: state.logs[idx], idx };
+    state.logs.splice(idx, 1);
+    dataChanged(); render();
+    toastUndo('Set deleted', () => {
+      state.logs.splice(Math.min(lastDeleted.idx, state.logs.length), 0, lastDeleted.set);
+      lastDeleted = null;
+      dataChanged(); render();
+      toast('Set restored');
+    });
   }
 
   // ---------- finish session ----------
@@ -1524,7 +1861,7 @@
       `</div>`;
     if (s.prs.length) {
       html += `<div class="sum-row sum-pr">🏆 New PR${s.prs.length > 1 ? 's' : ''}: ` +
-        s.prs.map(p => `${escapeHtml(p.name)} ${fmtWeight(p.weight)}`).join(' · ') + `</div>`;
+        s.prs.map(p => `${escapeHtml(p.name)} ${p.label}`).join(' · ') + `</div>`;
     }
     for (const cat of CATS()) {
       const rows = s.byCat.get(cat.id) || [];
@@ -1532,7 +1869,7 @@
       html += `<div class="sum-cat">${cat.name}</div>`;
       for (const r of rows) {
         html += `<div class="sum-row"><span>${escapeHtml(r.name)}</span>` +
-          `<span class="sets">${escapeHtml(setsSummary(r.sets))} ${unit()}</span></div>`;
+          `<span class="sets">${escapeHtml(setsSummary(r.sets, r.ex))} ${isBW(r.ex) ? 'reps' : unit() + handSuffix(r.ex)}</span></div>`;
       }
     }
     html += `<div class="sum-backup" id="finishBackupNote"></div>`;
@@ -1588,13 +1925,13 @@
     for (const cat of CATS()) {
       const rows = [];
       for (const ex of state.exercises.filter(e => e.category === cat.id)) {
-        const best = allTimeBestKg(ex.id);
+        const best = allTimeBest(ex.id);
         if (best === null) continue;
         let bestLog = null;
         for (const l of state.logs) {
-          if (l.exerciseId === ex.id && l.weight === best && (!bestLog || l.ts < bestLog.ts)) bestLog = l;
+          if (l.exerciseId === ex.id && setMetric(ex, l) === best && (!bestLog || l.ts < bestLog.ts)) bestLog = l;
         }
-        rows.push({ name: ex.name, best, reps: bestLog && bestLog.reps, date: bestLog && bestLog.date });
+        rows.push({ ex, name: ex.name, best, log: bestLog, date: bestLog && bestLog.date });
       }
       if (!rows.length) continue;
       any = true;
@@ -1605,8 +1942,11 @@
       for (const r of rows) {
         const row = document.createElement('div');
         row.className = 'pr-row';
+        const val = isBW(r.ex)
+          ? `${r.best} reps${r.log && r.log.weight ? ' +' + fmtWeight(r.log.weight) : ''}`
+          : `${fmtWeight(r.best)}${handSuffix(r.ex)}${r.log && r.log.reps ? ' × ' + r.log.reps : ''}`;
         row.innerHTML = `<span>${escapeHtml(r.name)}</span>` +
-          `<span><span class="w">${fmtWeight(r.best)}${r.reps ? ' × ' + r.reps : ''}</span>` +
+          `<span><span class="w">${val}</span>` +
           `<span class="d">${r.date ? fmtDate(r.date) : ''}</span></span>`;
         list.appendChild(row);
       }
