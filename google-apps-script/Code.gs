@@ -67,19 +67,27 @@ function writeWorkoutLog(data) {
     return (a.ts || 0) - (b.ts || 0);
   });
 
-  var rows = [['Date', 'Day', 'Exercise', 'Set', 'Weight (kg)', 'Reps', 'Logged at']];
+  var rows = [['Date', 'Day', 'Exercise', 'Type', 'Set', 'Weight (kg)', 'Per hand', 'Total kg moved', 'Reps', 'Logged at']];
   var setCounters = {};
   logs.forEach(function (l) {
     var ex = exById[l.exerciseId] || {};
     var key = l.date + '|' + l.exerciseId;
     setCounters[key] = (setCounters[key] || 0) + 1;
+    var perHand = !!ex.perHand;
+    var isBW = ex.mode === 'bodyweight';
+    var reps = l.reps == null ? '' : l.reps;
+    // What was actually moved: both hands for per-hand work.
+    var total = (l.weight || 0) * (perHand ? 2 : 1);
     rows.push([
       l.date,
       cats[ex.category] || ex.category || '',
       ex.name || '(deleted exercise)',
+      isBW ? 'Bodyweight' : 'Weighted',
       setCounters[key],
       l.weight,
-      l.reps == null ? '' : l.reps,
+      perHand ? 'Yes' : '',
+      total,
+      reps,
       l.ts ? new Date(l.ts) : '',
     ]);
   });
@@ -101,14 +109,17 @@ function writeProgressChart(data) {
   var exById = {};
   (data.exercises || []).forEach(function (x) { exById[x.id] = x; });
 
-  // best weight per exercise per date + session counts
-  var bestByDateEx = {}; // date -> exId -> best kg
+  // Best value per exercise per date: reps for bodyweight work, weight
+  // otherwise — matching how the app measures progress.
+  var bestByDateEx = {}; // date -> exId -> best value
   var sessionCount = {}; // exId -> distinct dates
   (data.logs || []).forEach(function (l) {
-    if (!exById[l.exerciseId]) return;
+    var ex = exById[l.exerciseId];
+    if (!ex) return;
+    var v = ex.mode === 'bodyweight' ? (l.reps || 0) : l.weight;
     if (!bestByDateEx[l.date]) bestByDateEx[l.date] = {};
     var cur = bestByDateEx[l.date][l.exerciseId];
-    if (cur === undefined || l.weight > cur) bestByDateEx[l.date][l.exerciseId] = l.weight;
+    if (cur === undefined || v > cur) bestByDateEx[l.date][l.exerciseId] = v;
   });
   Object.keys(bestByDateEx).forEach(function (date) {
     Object.keys(bestByDateEx[date]).forEach(function (exId) {
@@ -128,7 +139,11 @@ function writeProgressChart(data) {
   if (topExIds.length === 0) return;
 
   var dates = Object.keys(bestByDateEx).sort();
-  var rows = [['Date'].concat(topExIds.map(function (id) { return exById[id].name; }))];
+  // Bodyweight series are reps, so label them to keep the mixed chart readable.
+  var rows = [['Date'].concat(topExIds.map(function (id) {
+    var ex = exById[id];
+    return ex.mode === 'bodyweight' ? ex.name + ' (reps)' : ex.name;
+  }))];
   dates.forEach(function (date) {
     var row = [date];
     topExIds.forEach(function (exId) {
@@ -145,7 +160,7 @@ function writeProgressChart(data) {
     .setChartType(Charts.ChartType.LINE)
     .addRange(dataSheet.getRange(1, 1, rows.length, rows[0].length))
     .setPosition(1, 1, 8, 8)
-    .setOption('title', 'Best weight per session (kg)')
+    .setOption('title', 'Best per session (kg, or reps for bodyweight)')
     .setOption('width', 900)
     .setOption('height', 480)
     .setOption('colors', SERIES_COLORS.slice(0, topExIds.length))
@@ -154,7 +169,7 @@ function writeProgressChart(data) {
     .setOption('lineWidth', 2)
     .setOption('legend', { position: 'right' })
     .setOption('hAxis', { title: 'Date' })
-    .setOption('vAxis', { title: 'kg' })
+    .setOption('vAxis', { title: 'kg / reps' })
     .build();
   chartSheet.insertChart(chart);
 }
