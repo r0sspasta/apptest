@@ -13,6 +13,10 @@
  *   - "Backup": a full JSON snapshot you can restore via the app's Import
  */
 
+// Bump when this file changes, so the app can tell you if the deployment is
+// running older code than you pasted in.
+var SCRIPT_VERSION = 4;
+
 var LOG_SHEET = 'Workout Log';
 var BACKUP_SHEET = 'Backup';
 var CHART_DATA_SHEET = 'Chart Data';
@@ -23,8 +27,39 @@ var SERIES_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#00
 function doGet() {
   return jsonOut({
     ok: true,
+    version: SCRIPT_VERSION,
+    sheet: SpreadsheetApp.getActiveSpreadsheet().getName(),
     message: 'Gym Tracker sync endpoint is live. Paste this URL into the app’s Sheets sync settings.',
   });
+}
+
+/**
+ * Run this straight from the Apps Script editor (pick testWrite from the
+ * function dropdown, press Run) to prove the script can write to the sheet.
+ *
+ * It bypasses the phone, the network and the browser entirely, so:
+ *   - it works  -> the script and permissions are fine, and any problem is
+ *                  between the app and the web app URL
+ *   - it fails  -> the error tells you what is wrong (usually authorisation)
+ *
+ * The rows it writes are placeholders; the next real sync overwrites them.
+ */
+function testWrite() {
+  var today = new Date();
+  var key = Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var demo = {
+    type: 'sync',
+    categories: { test: 'Script test' },
+    exercises: [{ id: 'test-ex', name: 'SCRIPT TEST — delete me', category: 'test' }],
+    logs: [
+      { id: 't1', exerciseId: 'test-ex', weight: 60, reps: 8, date: key, ts: today.getTime() },
+      { id: 't2', exerciseId: 'test-ex', weight: 60, reps: 8, date: key, ts: today.getTime() + 1000 },
+    ],
+  };
+  writeWorkoutLog(demo);
+  writeProgressChart(demo);
+  writeBackup(demo);
+  Logger.log('testWrite OK — check the "Workout Log" tab. Script version ' + SCRIPT_VERSION);
 }
 
 function doPost(e) {
@@ -36,7 +71,11 @@ function doPost(e) {
   }
 
   if (data.type === 'ping') {
-    return jsonOut({ ok: true, sheet: SpreadsheetApp.getActiveSpreadsheet().getName() });
+    return jsonOut({
+      ok: true,
+      version: SCRIPT_VERSION,
+      sheet: SpreadsheetApp.getActiveSpreadsheet().getName(),
+    });
   }
   if (data.type !== 'sync') {
     return jsonOut({ ok: false, error: 'Unknown request type' });
