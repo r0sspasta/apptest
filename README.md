@@ -37,8 +37,14 @@ ones and can be renamed or deleted later.
 - **Training calendar** — the 📅 button shows a month view of your workout
   days and your current weekly streak.
 - **Last-session order** — each day shows the order you actually did the
-  exercises last time, and ⇅ Reorder lets you arrange cards to match your
-  routine.
+  exercises last time, and you can drag the ⠿ handle to arrange cards to match
+  your routine. As you train, exercises you've started move to a "done today"
+  section in the order you actually did them, numbered #1, #2, #3.
+- **Set types** — mark a set as a **drop set** (shown chained to the set it
+  continues: `60×8 → 45×6 → 30×5`) or as taken **to failure** (marked `F`).
+  Drops don't count toward your set target or your PRs, and neither type
+  triggers the uneven-sets warning. Two exercises can also be paired as a
+  **superset**, shown with a linked rail on both cards.
 - **kg / lb** — switch units in settings; data is stored in kg underneath so
   nothing is lost switching back and forth.
 - **History** — tap *History* on any card for your last 20 sessions, with your

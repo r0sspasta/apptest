@@ -67,12 +67,24 @@ function writeWorkoutLog(data) {
     return (a.ts || 0) - (b.ts || 0);
   });
 
-  var rows = [['Date', 'Day', 'Exercise', 'Type', 'Set', 'Weight (kg)', 'Per hand', 'Total kg moved', 'Reps', 'Logged at']];
+  var rows = [['Date', 'Day', 'Exercise', 'Type', 'Set', 'Set type', 'Superset with',
+               'Weight (kg)', 'Per hand', 'Total kg moved', 'Reps', 'Logged at']];
   var setCounters = {};
+  // Names of an exercise's superset partners, for the "Superset with" column.
+  var partnersOf = {};
+  (data.exercises || []).forEach(function (x) {
+    if (!x.supersetId) return;
+    partnersOf[x.id] = (data.exercises || [])
+      .filter(function (o) { return o.id !== x.id && o.supersetId === x.supersetId; })
+      .map(function (o) { return o.name; })
+      .join(', ');
+  });
   logs.forEach(function (l) {
     var ex = exById[l.exerciseId] || {};
     var key = l.date + '|' + l.exerciseId;
-    setCounters[key] = (setCounters[key] || 0) + 1;
+    // Drop continuations belong to the set above them, so they don't take a
+    // new set number.
+    if (!l.drop) setCounters[key] = (setCounters[key] || 0) + 1;
     var perHand = !!ex.perHand;
     var isBW = ex.mode === 'bodyweight';
     var reps = l.reps == null ? '' : l.reps;
@@ -83,7 +95,9 @@ function writeWorkoutLog(data) {
       cats[ex.category] || ex.category || '',
       ex.name || '(deleted exercise)',
       isBW ? 'Bodyweight' : 'Weighted',
-      setCounters[key],
+      setCounters[key] || 1,
+      l.drop ? (l.amrap ? 'Drop, to failure' : 'Drop') : (l.amrap ? 'To failure' : 'Working'),
+      partnersOf[l.exerciseId] || '',
       l.weight,
       perHand ? 'Yes' : '',
       total,
@@ -115,7 +129,7 @@ function writeProgressChart(data) {
   var sessionCount = {}; // exId -> distinct dates
   (data.logs || []).forEach(function (l) {
     var ex = exById[l.exerciseId];
-    if (!ex) return;
+    if (!ex || l.drop) return; // drops are part of the set above, not a data point
     var v = ex.mode === 'bodyweight' ? (l.reps || 0) : l.weight;
     if (!bestByDateEx[l.date]) bestByDateEx[l.date] = {};
     var cur = bestByDateEx[l.date][l.exerciseId];

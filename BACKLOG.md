@@ -2,52 +2,17 @@
 
 Ideas raised but not built. Nothing here is committed to a timeline.
 
-## Set types
+## Set types — built
 
-All three of these are ways of saying "this set isn't a plain straight set",
-and they share a data model: a `type` (and grouping) on the log entry. Worth
-building together rather than one at a time.
+Supersets, drop sets and sets to failure all shipped. Remaining refinements:
 
-They also all collide with logic that already exists, so whichever gets built
-first needs to teach the existing rules to ignore or special-case it:
-
-- The **uneven-sets warning** flags a session where most sets hit the same rep
-  count and a minority fell short. A drop set or a to-exhaustion set looks
-  exactly like that, so today both would be wrongly flagged.
-- **Target sets** counts rows. Drop-set continuations shouldn't count as
-  separate sets toward "3 of 4".
-- **PRs, charts and progression hints** should key off the top set, not the
-  drops.
-
-### Superset
-
-Two or more exercises done back to back with no rest, alternating rounds.
-
-- Data: a superset group linking exercises (not individual sets), so the
-  pairing persists between sessions.
-- Display: bracket the paired cards together; the last-session order strip
-  should show them as one unit rather than two consecutive entries.
-- A rest timer, if built, starts after the round rather than after each set.
-
-### Drop set
-
-A working set, then immediately reduced weight and continued, sometimes
-through several drops.
-
-- Data: continuation sets flagged as drops belonging to a parent set.
-- Display: nest the drops under their parent chip (`60×8 → 45×6 → 30×5`)
-  rather than listing them as separate sets.
-- Only the parent set counts toward set targets and PRs.
-
-### Set to exhaustion (AMRAP)
-
-A set taken to failure; the rep count is an outcome, not a target.
-
-- Data: a boolean flag on the set.
-- Reps vary by nature, so exclude these from the uneven-sets check.
-- Progression differs: you're chasing reps at a fixed weight, so the hint
-  should compare against the last to-failure set at the same weight.
-- Usually the final set of an exercise — worth showing distinctly in history.
+- The last-session order strip still lists supersetted exercises as two
+  consecutive entries rather than one unit.
+- Progression hints don't yet treat a to-failure set specially — ideally they
+  compare against the last to-failure set at the same weight, since you're
+  chasing reps rather than load.
+- A rest timer, if built, should start after a superset round rather than
+  after each set.
 
 ## Coaching
 

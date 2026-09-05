@@ -123,6 +123,9 @@
     border-radius: 5px; padding: 1px 5px;
     font-size: 0.7rem; font-weight: 800; vertical-align: 1px;
   }
+  .ex-order-badge.today {
+    background: rgba(62, 207, 142, 0.14); color: var(--green);
+  }
 
   .grip {
     flex: 0 0 auto;
@@ -160,6 +163,31 @@
   }
   .meta-warn { color: var(--amber); font-weight: 600; }
 
+  .type-row { display: flex; gap: 8px; margin-top: 8px; }
+  .type-toggle {
+    flex: 1;
+    background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text-dim); border-radius: 10px;
+    padding: 9px 8px; font-size: 0.82rem; font-weight: 700;
+    cursor: pointer; font-family: inherit;
+  }
+  .type-toggle.on { border-color: var(--amber); color: var(--amber); background: rgba(255,179,71,0.12); }
+  .type-toggle:disabled { opacity: 0.35; cursor: default; }
+
+  .set-chip .drop-arrow { color: var(--text-dim); margin: 0 3px; }
+  .set-chip .amrap-tag {
+    color: var(--amber); font-weight: 800; font-size: 0.7rem;
+    vertical-align: 2px; margin-left: 2px;
+  }
+  .superset-rail {
+    border-left: 3px solid var(--accent);
+    padding-left: 9px; margin-left: -12px;
+  }
+  .superset-tag {
+    display: inline-block; margin-bottom: 4px;
+    color: var(--accent); font-size: 0.66rem; font-weight: 800;
+    letter-spacing: 0.7px; text-transform: uppercase;
+  }
   .repeat-btn {
     display: inline-flex; align-items: center; gap: 6px;
     background: var(--accent-soft);
@@ -402,6 +430,13 @@
     outline: none; margin-bottom: 14px;
   }
   .modal input[type="number"]:focus { border-color: var(--accent); }
+  .modal select {
+    width: 100%; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 10px;
+    color: var(--text); font-size: 1rem; padding: 13px 12px;
+    outline: none; margin-bottom: 14px; font-family: inherit;
+  }
+  .modal select:focus { border-color: var(--accent); }
   .set-edit-grid { display: flex; gap: 10px; }
   .set-edit-grid > div { flex: 1; }
   .set-edit-grid input { text-align: center; margin-bottom: 2px; }
@@ -584,6 +619,8 @@
     </label>
     <div class="settings-h">Target sets</div>
     <input type="number" id="exTargetSets" min="1" max="20" placeholder="auto (from last session)">
+    <div class="settings-h">Superset with</div>
+    <select id="exSuperset"></select>
     <div class="modal-actions" style="margin-top:16px">
       <button class="btn btn-ghost" id="exEditCancel">Cancel</button>
       <button class="btn btn-primary" id="exEditSave">Save</button>
@@ -717,6 +754,8 @@
   let openCards = new Set();     // exercise ids with expanded card
   let openHistories = new Set(); // exercise ids with history shown
   let pendingNotes = new Map();  // exercise id -> note text typed but not yet logged
+  let pendingTypes = new Map();  // exercise id -> 'drop' if next set is a drop continuation
+  let pendingAmrap = new Set();  // exercise ids whose next set is taken to failure
 
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
@@ -792,7 +831,10 @@
   // The number an exercise progresses on: reps for bodyweight work, weight
   // otherwise. PRs, charts, hints and "best" all key off this.
   function setMetric(ex, s) { return isBW(ex) ? (s.reps || 0) : s.weight; }
-  function bestMetric(ex, sets) { return Math.max(...sets.map(s => setMetric(ex, s))); }
+  function bestMetric(ex, sets) {
+    const w = sets.filter(s => !s.drop);
+    return Math.max(...(w.length ? w : sets).map(s => setMetric(ex, s)));
+  }
 
   function bestWeight(sets) { return Math.max(...sets.map(s => s.weight)); }
 
@@ -919,28 +961,24 @@
 
   // Write the on-screen card order back into state.exercises.
   //
-  // Exercises already done today are displayed sunk to the bottom, so the
-  // visible order is a permutation of the stored one. To avoid a drag
-  // silently rewriting the stored routine, each group (pending / done) keeps
-  // the slots it already occupied and only its internal order is updated.
+  // Only not-yet-started exercises are draggable; started ones are displayed
+  // in the order the session happened. So a drag reorders the pending group
+  // within the slots it already occupied, leaving started exercises' stored
+  // positions untouched.
   function commitCardOrder(cards) {
     const ids = cards.map(c => c.dataset.exId).filter(Boolean);
     if (!ids.length) return;
     const byId = new Map(state.exercises.map(e => [e.id, e]));
-    const dragged = ids.map(id => byId.get(id)).filter(Boolean);
-    if (dragged.length !== ids.length) return; // stale DOM; leave state alone
-
     const wasDone = e => todaySets(e.id).length > 0;
-    const pendingNew = dragged.filter(e => !wasDone(e));
-    const doneNew = dragged.filter(wasDone);
+    const pendingNew = ids.map(id => byId.get(id)).filter(e => e && !wasDone(e));
 
-    let pi = 0, di = 0;
+    let pi = 0;
     const next = state.exercises.slice();
     next.forEach((e, i) => {
-      if (e.category !== activeCat) return;
-      next[i] = wasDone(e) ? doneNew[di++] : pendingNew[pi++];
+      if (e.category !== activeCat || wasDone(e)) return;
+      next[i] = pendingNew[pi++];
     });
-    if (pi !== pendingNew.length || di !== doneNew.length) return;
+    if (pi !== pendingNew.length) return; // stale DOM; leave state alone
     state.exercises = next;
     dataChanged(); render();
     toast('Order saved');
@@ -992,13 +1030,55 @@
     return groups;
   }
 
+  // --- set types -------------------------------------------------------
+  // A logged set is plain unless flagged: `drop` marks a reduced-weight
+  // continuation of the set before it, `amrap` marks a set taken to failure.
+  function isDrop(s) { return !!(s && s.drop); }
+  function isAmrap(s) { return !!(s && s.amrap); }
+  // Working sets are what counts for targets, PRs and the evenness check —
+  // drop continuations are part of the set above them, not sets of their own.
+  function workingSets(sets) { return sets.filter(s => !isDrop(s)); }
+
+  // Group sets into units: each working set plus any drop continuations that
+  // follow it. Identical units then collapse, so 3 plain sets of 60x8 still
+  // read as one "(x3)" chip.
+  function setUnits(sets) {
+    const units = [];
+    for (const s of sets) {
+      if (isDrop(s) && units.length) units[units.length - 1].chain.push(s);
+      else units.push({ chain: [s] });
+    }
+    const sig = u => u.chain.map(s => `${s.weight}|${s.reps || 0}|${isAmrap(s) ? 'F' : ''}`).join('>');
+    const out = [];
+    for (const u of units) {
+      const key = sig(u);
+      const prev = out.find(x => x.key === key);
+      if (prev) {
+        prev.count++;
+        prev.ids.push(...u.chain.map(s => s.id));
+        prev.hasNote = prev.hasNote || u.chain.some(s => s.note);
+      } else {
+        out.push({
+          key, chain: u.chain, count: 1,
+          ids: u.chain.map(s => s.id),
+          hasNote: u.chain.some(s => s.note),
+        });
+      }
+    }
+    return out;
+  }
+
+  function fmtSetValue(ex, s) {
+    const v = isBW(ex)
+      ? `${s.reps || 0}${s.weight ? ' +' + roundW(toDisplay(s.weight)) : ''}`
+      : `${roundW(toDisplay(s.weight))}${s.reps ? '×' + s.reps : ''}`;
+    return v + (isAmrap(s) ? 'ᶠ' : '');
+  }
+
   function setsSummary(sets, ex) {
-    return groupSets(sets).map(g => {
-      const body = isBW(ex)
-        ? `${g.reps || 0}${g.weight ? ' +' + roundW(toDisplay(g.weight)) : ''}`
-        : `${roundW(toDisplay(g.weight))}${g.reps ? '×' + g.reps : ''}`;
-      return body + (g.count > 1 ? ` (×${g.count})` : '');
-    }).join(', ');
+    return setUnits(sets).map(u =>
+      u.chain.map(s => fmtSetValue(ex, s)).join(' → ') + (u.count > 1 ? ` (×${u.count})` : '')
+    ).join(', ');
   }
 
   // Rep outlier in the last session: at one weight, most sets hit the same rep
@@ -1009,7 +1089,7 @@
     if (!last) return null;
     const byWeight = new Map();
     for (const s of last.sets) {
-      if (!s.reps) continue;
+      if (!s.reps || s.drop || s.amrap) continue;
       if (!byWeight.has(s.weight)) byWeight.set(s.weight, []);
       byWeight.get(s.weight).push(s);
     }
@@ -1063,7 +1143,7 @@
     const ex = exById(exId);
     let best = null;
     for (const l of state.logs) {
-      if (l.exerciseId !== exId) continue;
+      if (l.exerciseId !== exId || l.drop) continue;
       const v = setMetric(ex, l);
       if (best === null || v > best) best = v;
     }
@@ -1072,10 +1152,30 @@
 
   // How many sets this exercise is normally done for, learned from the last
   // session; used for the "Set 2 of 4" target.
+  function firstTsToday(exId) {
+    let first = Infinity;
+    for (const l of state.logs) {
+      if (l.exerciseId === exId && l.date === todayKey() && l.ts < first) first = l.ts;
+    }
+    return first;
+  }
+
+  // 1-based position of an exercise within today's session for its category,
+  // ordered by when it was first logged. Null if not started today.
+  function todayPosition(exId) {
+    const ex = exById(exId);
+    if (!ex) return null;
+    const started = state.exercises
+      .filter(e => e.category === ex.category && todaySets(e.id).length > 0)
+      .sort((a, b) => firstTsToday(a.id) - firstTsToday(b.id));
+    const i = started.findIndex(e => e.id === exId);
+    return i < 0 ? null : i + 1;
+  }
+
   function targetSets(exId) {
     if (typeof (exById(exId) || {}).targetSets === 'number') return exById(exId).targetSets;
     const last = lastSession(exId);
-    return last ? last.sets.length : null;
+    return last ? workingSets(last.sets).length : null;
   }
 
   // ---------- rendering ----------
@@ -1196,12 +1296,16 @@
 
     // Exercises already done today sink to the bottom so what's left is on top.
     const pending = exs.filter(e => todaySets(e.id).length === 0);
-    const doneToday = exs.filter(e => todaySets(e.id).length > 0);
+    // Started exercises read in the order the session actually happened —
+    // by when each was first logged today, not by stored routine order.
+    const doneToday = exs
+      .filter(e => todaySets(e.id).length > 0)
+      .sort((a, b) => firstTsToday(a.id) - firstTsToday(b.id));
     for (const ex of pending) $main.appendChild(renderCard(ex, lastOrder));
     if (doneToday.length && pending.length) {
       const div = document.createElement('div');
       div.className = 'done-divider';
-      div.textContent = `done today (${doneToday.length})`;
+      div.textContent = `done today · in order (${doneToday.length})`;
       $main.appendChild(div);
     }
     for (const ex of doneToday) {
@@ -1237,8 +1341,13 @@
     const card = document.createElement('div');
     card.className = 'card' + (openCards.has(ex.id) ? ' open' : '');
     card.dataset.exId = ex.id;
-    const orderPos = lastOrder && lastOrder.posById.get(ex.id);
-    const badge = orderPos ? `<span class="ex-order-badge" title="You did this ${orderPos}${ordinalSuffix(orderPos)} last session">#${orderPos}</span>` : '';
+    // For an exercise started today, the useful position is where it came in
+    // today's session; otherwise it's where it came last time.
+    const todayPos = todayPosition(ex.id);
+    const lastPos = lastOrder && lastOrder.posById.get(ex.id);
+    const badge = todayPos
+      ? `<span class="ex-order-badge today" title="${todayPos}${ordinalSuffix(todayPos)} exercise of today's session">#${todayPos}</span>`
+      : (lastPos ? `<span class="ex-order-badge" title="You did this ${lastPos}${ordinalSuffix(lastPos)} last session">#${lastPos}</span>` : '');
 
     const last = lastSession(ex.id);
     const today = todaySets(ex.id);
@@ -1268,17 +1377,26 @@
       metaHtml = `No sessions yet — log your first`;
     }
 
-    head.innerHTML = `<div><div class="ex-name">${badge}${escapeHtml(ex.name)}</div><div class="ex-meta">${metaHtml}</div></div>`;
+    const partners = supersetPartners(ex);
+    const ssTag = partners.length
+      ? `<span class="superset-tag">⇄ Superset with ${escapeHtml(partners.map(p => p.name).join(', '))}</span>`
+      : '';
+    head.innerHTML = `<div>${ssTag}<div class="ex-name">${badge}${escapeHtml(ex.name)}</div><div class="ex-meta">${metaHtml}</div></div>`;
+    if (partners.length) card.classList.add('superset-rail');
     const right = document.createElement('div');
     right.style.cssText = 'display:flex;align-items:center;gap:2px';
     right.innerHTML = `<span class="chev">▼</span>`;
-    const grip = document.createElement('span');
-    grip.className = 'grip';
-    grip.textContent = '⠿';
-    grip.title = 'Drag to reorder';
-    grip.setAttribute('aria-label', 'Drag to reorder ' + ex.name);
-    attachDrag(grip, card);
-    right.appendChild(grip);
+    // Started exercises are ordered by when you did them, so only the
+    // not-yet-started ones are draggable.
+    if (today.length === 0) {
+      const grip = document.createElement('span');
+      grip.className = 'grip';
+      grip.textContent = '⠿';
+      grip.title = 'Drag to reorder';
+      grip.setAttribute('aria-label', 'Drag to reorder ' + ex.name);
+      attachDrag(grip, card);
+      right.appendChild(grip);
+    }
     head.appendChild(right);
     head.onclick = e => {
       if (e.target.closest('.grip')) return;
@@ -1315,30 +1433,34 @@
     if (today.length > 0) {
       const wrap = document.createElement('div');
       wrap.className = 'today-sets';
-      const done = today.length;
+      const done = workingSets(today).length; // drops belong to the set above
       const label = target
         ? (done >= target
             ? `Today’s sets · <span class="sets-done">✓ ${done} of ${target} done</span>`
             : `Today’s sets · <span class="sets-target">${done} of ${target}</span>`)
         : 'Today’s sets';
       wrap.innerHTML = `<div class="today-label">${label}</div>`;
-      for (const g of groupSets(today)) {
+      for (const u of setUnits(today)) {
         const chip = document.createElement('span');
         chip.className = 'set-chip';
-        const val = isBW(ex)
-          ? `${g.reps || 0} reps${g.weight ? ' +' + fmtWeight(g.weight) : ''}`
-          : `${fmtWeight(g.weight)}${handSuffix(ex)}${g.reps ? ' × ' + g.reps : ''}`;
+        const parts = u.chain.map(s => {
+          const v = isBW(ex)
+            ? `${s.reps || 0} reps${s.weight ? ' +' + fmtWeight(s.weight) : ''}`
+            : `${fmtWeight(s.weight)}${handSuffix(ex)}${s.reps ? ' × ' + s.reps : ''}`;
+          return v + (isAmrap(s) ? '<span class="amrap-tag" title="to failure">F</span>' : '');
+        });
         const main = document.createElement('button');
         main.className = 'chip-main';
-        main.innerHTML = `${g.count > 1 ? g.count + '× ' : ''}${val}${g.hasNote ? ' 📝' : ''}`;
-        main.title = 'Tap to edit this set';
-        main.onclick = () => openSetEditor(g.ids[g.ids.length - 1], g.count);
+        main.innerHTML = (u.count > 1 ? u.count + '× ' : '') +
+          parts.join('<span class="drop-arrow">→</span>') + (u.hasNote ? ' 📝' : '');
+        main.title = u.chain.length > 1 ? 'Drop set — tap to edit the last part' : 'Tap to edit this set';
+        main.onclick = () => openSetEditor(u.ids[u.ids.length - 1], u.count);
         chip.appendChild(main);
         const del = document.createElement('button');
         del.className = 'del-set';
         del.textContent = '✕';
-        del.title = g.count > 1 ? 'Delete one of these sets' : 'Delete set';
-        del.onclick = () => deleteSet(g.ids[g.ids.length - 1]);
+        del.title = u.count > 1 ? 'Delete one of these sets' : 'Delete set';
+        del.onclick = () => deleteSet(u.ids[u.ids.length - 1]);
         chip.appendChild(del);
         wrap.appendChild(chip);
       }
@@ -1361,7 +1483,7 @@
           ts: Date.now(),
         });
         dataChanged(); render();
-        const n = today.length + 1;
+        const n = workingSets(today).length + 1;
         toast(target ? `Set ${n} of ${target} logged` : `Set ${n} logged — same again`);
       };
       wrap.appendChild(repeat);
@@ -1420,6 +1542,8 @@
       }
       const weightKg = isNaN(entered) ? 0 : fromDisplay(entered);
       const note = (pendingNotes.get(ex.id) || '').trim();
+      const asDrop = pendingTypes.get(ex.id) === 'drop' && today.length > 0;
+      const asAmrap = pendingAmrap.has(ex.id);
       const prevBest = allTimeBest(ex.id);
       const newSet = {
         id: uid(),
@@ -1427,18 +1551,23 @@
         weight: weightKg,
         reps: isNaN(reps) ? null : reps,
         note: note || undefined,
+        drop: asDrop || undefined,
+        amrap: asAmrap || undefined,
         date: todayKey(),
         ts: Date.now(),
       };
       state.logs.push(newSet);
       pendingNotes.delete(ex.id);
+      pendingTypes.delete(ex.id);
+      pendingAmrap.delete(ex.id);
       dataChanged(); render();
       const metric = setMetric(ex, newSet);
       const shown = isBW(ex) ? `${reps} reps` : fmtWeight(weightKg) + handSuffix(ex);
-      if (prevBest !== null && metric > prevBest) {
+      // A drop continuation is part of the set above it, never a PR of its own.
+      if (!asDrop && prevBest !== null && metric > prevBest) {
         celebratePR(`🎉 NEW PR — ${ex.name} ${shown}!`);
       } else {
-        toast(`Logged ${shown} — ${ex.name}`);
+        toast(`Logged ${asDrop ? 'drop to ' : ''}${shown}${asAmrap ? ' to failure' : ''} — ${ex.name}`);
       }
     };
     logBtn.onclick = doLog;
@@ -1449,6 +1578,31 @@
     logRow.appendChild(rField);
     logRow.appendChild(logBtn);
     body.appendChild(logRow);
+
+    // set-type toggles: apply to the next set logged on this card
+    const typeRow = document.createElement('div');
+    typeRow.className = 'type-row';
+    const dropBtn = document.createElement('button');
+    dropBtn.className = 'type-toggle' + (pendingTypes.get(ex.id) === 'drop' ? ' on' : '');
+    dropBtn.textContent = '↓ Drop set';
+    dropBtn.title = today.length ? 'Log this as a reduced-weight continuation of the set above'
+                                 : 'A drop set continues the set before it — log a working set first';
+    dropBtn.disabled = today.length === 0;
+    dropBtn.onclick = () => {
+      pendingTypes.set(ex.id, pendingTypes.get(ex.id) === 'drop' ? null : 'drop');
+      render();
+    };
+    const failBtn = document.createElement('button');
+    failBtn.className = 'type-toggle' + (pendingAmrap.has(ex.id) ? ' on' : '');
+    failBtn.textContent = 'F To failure';
+    failBtn.title = 'Mark the next set as taken to failure';
+    failBtn.onclick = () => {
+      if (pendingAmrap.has(ex.id)) pendingAmrap.delete(ex.id); else pendingAmrap.add(ex.id);
+      render();
+    };
+    typeRow.appendChild(dropBtn);
+    typeRow.appendChild(failBtn);
+    body.appendChild(typeRow);
 
     // note for the next logged set
     const noteRow = document.createElement('div');
@@ -1739,8 +1893,25 @@
     document.getElementById('exEditName').value = ex.name;
     document.getElementById('exPerHand').checked = isPerHand(ex);
     document.getElementById('exTargetSets').value = typeof ex.targetSets === 'number' ? ex.targetSets : '';
+
+    // Superset picker: any other exercise in the same muscle group.
+    const sel = document.getElementById('exSuperset');
+    sel.innerHTML = '<option value="">Nothing — done on its own</option>';
+    for (const other of state.exercises) {
+      if (other.category !== ex.category || other.id === ex.id) continue;
+      const opt = document.createElement('option');
+      opt.value = other.id;
+      opt.textContent = other.name;
+      if (ex.supersetId && other.supersetId === ex.supersetId) opt.selected = true;
+      sel.appendChild(opt);
+    }
     renderExModeSeg();
     $exEditBackdrop.classList.add('show');
+  }
+
+  function supersetPartners(ex) {
+    if (!ex || !ex.supersetId) return [];
+    return state.exercises.filter(e => e.id !== ex.id && e.supersetId === ex.supersetId);
   }
   function closeExEditor() { $exEditBackdrop.classList.remove('show'); editingEx = null; }
 
@@ -1765,6 +1936,26 @@
       else delete editingEx.perHand;
     }
     if (!isNaN(t) && t > 0) editingEx.targetSets = t; else delete editingEx.targetSets;
+
+    // Supersets are a shared group id, so pairing is symmetric: picking a
+    // partner puts both exercises in the same group.
+    const partnerId = document.getElementById('exSuperset').value;
+    const oldGroup = editingEx.supersetId;
+    if (partnerId) {
+      const partner = exById(partnerId);
+      if (partner) {
+        const gid = partner.supersetId || oldGroup || 'ss-' + uid();
+        partner.supersetId = gid;
+        editingEx.supersetId = gid;
+      }
+    } else {
+      delete editingEx.supersetId;
+    }
+    // Drop a group that no longer has anyone to pair with.
+    if (oldGroup) {
+      const left = state.exercises.filter(e => e.supersetId === oldGroup);
+      if (left.length === 1) delete left[0].supersetId;
+    }
     closeExEditor();
     dataChanged(); render();
     toast('Exercise updated');
