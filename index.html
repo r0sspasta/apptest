@@ -2777,6 +2777,7 @@
   // Sheet (see google-apps-script/Code.gs). The body is a plain string so the
   // request stays "simple" (no CORS preflight, which Apps Script can't answer).
 
+  const EXPECTED_SCRIPT_VERSION = 4; // keep in step with SCRIPT_VERSION in Code.gs
   let syncTimer = null;
   let syncInFlight = false;
   let syncQueued = false;
@@ -2925,7 +2926,12 @@
       lastSyncError = null;
       save();
       if (r.confirmed) {
-        renderSettingsStatus(`Connected to “${(r.out && r.out.sheet) || 'your sheet'}” ✓ — syncing now…`, 'ok');
+        const v = r.out && r.out.version;
+        const stale = v && v < EXPECTED_SCRIPT_VERSION;
+        renderSettingsStatus(
+          `Connected to “${(r.out && r.out.sheet) || 'your sheet'}” ✓ — syncing now…` +
+          (stale ? ` (script v${v}; v${EXPECTED_SCRIPT_VERSION} available — re-paste Code.gs and re-deploy for the newest columns)` : ''),
+          stale ? 'warn' : 'ok');
         toast('Google Sheets connected');
       } else {
         renderSettingsStatus('Saved, and your data is being sent. This browser blocks reading Google’s reply, so it can’t be confirmed here — open your sheet and check the “Workout Log” tab fills in. (Chrome usually confirms properly.)', 'warn');
