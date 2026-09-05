@@ -19,10 +19,18 @@ Supersets, drop sets and sets to failure all shipped. Remaining refinements:
 - **Stall detection** — flag an exercise that has not progressed for 3–4
   sessions and suggest a deload (drop ~10%, build back up). The app currently
   says when to add weight but never says when you are stuck.
-- **Rest timer** — starts when a set is logged, alerts when rest is up, learns
-  the usual gap between sets.
+- **Rest timer** — the guided session shows elapsed rest, but it is passive:
+  no target, no alert when the rest is up.
 - **Warm-up set flag** — so light sets don't count toward PRs, averages, or
   the uneven-sets check.
+
+## Guided session refinements
+
+- Supersets aren't reflected in the flow — after logging one half, it should
+  offer the partner exercise next rather than returning to the full list.
+- No way to add an exercise from inside the guided flow; you have to leave it.
+- The group prediction ignores rest days, so on a rest day it still suggests
+  whatever is most overdue rather than saying "nothing due".
 
 ## Data and safety
 
