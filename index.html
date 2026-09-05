@@ -29,7 +29,7 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     font-size: 16px;
     line-height: 1.4;
-    padding-bottom: 90px;
+    padding-bottom: 150px; /* clears the footer and the guided-session button */
   }
 
   header {
@@ -542,6 +542,158 @@
   .sync-status-line.warn { color: var(--amber); }
   .sync-status-line.error { color: var(--red); }
 
+  /* ---------- guided session (wizard) ---------- */
+  .wiz-fab {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(58px + env(safe-area-inset-bottom));
+    z-index: 25;
+    background: var(--accent); color: #fff;
+    border: none; border-radius: 999px;
+    padding: 13px 26px;
+    font-size: 0.95rem; font-weight: 800;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+    cursor: pointer;
+  }
+  .wiz-fab:active { filter: brightness(1.12); }
+
+  .wiz {
+    position: fixed; inset: 0; z-index: 70;
+    background: var(--bg);
+    display: none; flex-direction: column;
+  }
+  .wiz.show { display: flex; }
+  .wiz-top {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px calc(12px);
+    border-bottom: 1px solid var(--border);
+    flex: 0 0 auto;
+  }
+  .wiz-back, .wiz-close {
+    background: none; border: none; color: var(--text-dim);
+    font-size: 1.35rem; cursor: pointer; padding: 4px 8px; line-height: 1;
+  }
+  .wiz-crumb { flex: 1; min-width: 0; }
+  .wiz-crumb .t { font-weight: 700; font-size: 0.98rem; }
+  .wiz-crumb .s { font-size: 0.78rem; color: var(--text-dim); margin-top: 1px; }
+  .wiz-rest {
+    font-family: ui-monospace, monospace;
+    font-size: 0.82rem; font-weight: 700; color: var(--text-dim);
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 999px; padding: 4px 10px; white-space: nowrap;
+  }
+  .wiz-rest.ready { color: var(--green); border-color: var(--green); }
+
+  .wiz-body {
+    flex: 1 1 auto; overflow-y: auto;
+    padding: 16px 14px 8px;
+    max-width: 640px; width: 100%; margin: 0 auto;
+  }
+  .wiz-foot {
+    flex: 0 0 auto;
+    padding: 10px 14px calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    max-width: 640px; width: 100%; margin: 0 auto;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+
+  .wiz-h {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.7px;
+    color: var(--text-dim); margin: 0 2px 8px;
+  }
+  .wiz-hero {
+    background: var(--surface); border: 1px solid var(--accent);
+    border-radius: 16px; padding: 18px 16px; margin-bottom: 14px;
+  }
+  .wiz-hero .why {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.7px;
+    color: var(--accent); font-weight: 800; margin-bottom: 6px;
+  }
+  .wiz-hero .name { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.01em; }
+  .wiz-hero .sub { color: var(--text-dim); font-size: 0.88rem; margin-top: 5px; }
+
+  .wiz-list { display: flex; flex-direction: column; gap: 8px; }
+  .wiz-row {
+    display: flex; align-items: center; gap: 12px;
+    width: 100%; text-align: left;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 13px; padding: 13px 14px;
+    color: var(--text); font-family: inherit; font-size: 0.95rem;
+    cursor: pointer; min-height: 60px;
+  }
+  .wiz-row:active { border-color: var(--accent); }
+  .wiz-row .idx {
+    flex: 0 0 auto; width: 25px; height: 25px; border-radius: 50%;
+    background: var(--surface-2); color: var(--text-dim);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.75rem; font-weight: 800;
+  }
+  .wiz-row.done .idx { background: rgba(62,207,142,0.16); color: var(--green); }
+  .wiz-row .meat { flex: 1; min-width: 0; }
+  .wiz-row .n { font-weight: 700; }
+  .wiz-row .d { font-size: 0.8rem; color: var(--text-dim); margin-top: 2px; }
+  .wiz-row .go { color: var(--text-dim); font-size: 1.1rem; }
+
+  .stepper {
+    display: flex; align-items: stretch; gap: 10px;
+    margin-bottom: 14px;
+  }
+  .stepper button {
+    flex: 0 0 68px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 14px;
+    font-size: 1.5rem; font-weight: 700; cursor: pointer;
+    font-family: inherit;
+  }
+  .stepper button:active { border-color: var(--accent); color: var(--accent); }
+  .stepper button:disabled { opacity: 0.3; }
+  .stepper .val {
+    flex: 1; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 12px 8px; text-align: center;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .stepper .val .big {
+    font-size: 2rem; font-weight: 800; line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+  }
+  .stepper .val .cap {
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.6px;
+    color: var(--text-dim); margin-top: 3px;
+  }
+
+  .btn-big {
+    width: 100%; border: none; border-radius: 14px;
+    background: var(--accent); color: #fff;
+    font-size: 1.08rem; font-weight: 800;
+    padding: 17px 14px; cursor: pointer; font-family: inherit;
+  }
+  .btn-big:active { filter: brightness(1.12); }
+  .btn-big.ghost {
+    background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border);
+    font-size: 0.95rem; font-weight: 700; padding: 14px;
+  }
+  .btn-pair { display: flex; gap: 8px; }
+  .btn-pair > * { flex: 1; }
+
+  .wiz-toggles { display: flex; gap: 8px; margin-bottom: 4px; }
+  .wiz-toggles .type-toggle { font-size: 0.8rem; padding: 10px 8px; }
+
+  .wiz-ref {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 13px; padding: 12px 14px; margin-bottom: 14px;
+  }
+  .wiz-ref .lbl {
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.6px;
+    color: var(--text-dim);
+  }
+  .wiz-ref .val { font-size: 1rem; font-weight: 700; margin-top: 3px; }
+  .wiz-ref .val .w { color: var(--amber); }
+  .wiz-done-note {
+    text-align: center; color: var(--green); font-weight: 700;
+    font-size: 1.05rem; margin: 6px 0 14px;
+  }
+
   .toast {
     position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%) translateY(20px);
     background: var(--surface-2); border: 1px solid var(--border);
@@ -549,7 +701,7 @@
     padding: 10px 18px; border-radius: 999px;
     opacity: 0; pointer-events: none;
     transition: all 0.25s ease;
-    z-index: 60;
+    z-index: 90; /* above the guided-session overlay */
     white-space: nowrap;
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -598,6 +750,22 @@
       <button class="btn btn-primary" id="modalSave">Save</button>
     </div>
   </div>
+</div>
+
+<button class="wiz-fab" id="wizFab">▶ Guided session</button>
+
+<div class="wiz" id="wiz">
+  <div class="wiz-top">
+    <button class="wiz-back" id="wizBack" title="Back">‹</button>
+    <div class="wiz-crumb">
+      <div class="t" id="wizTitle"></div>
+      <div class="s" id="wizSub"></div>
+    </div>
+    <span class="wiz-rest" id="wizRest" hidden></span>
+    <button class="wiz-close" id="wizClose" title="Close">✕</button>
+  </div>
+  <div class="wiz-body" id="wizBody"></div>
+  <div class="wiz-foot" id="wizFoot"></div>
 </div>
 
 <div class="modal-backdrop" id="exEditBackdrop">
@@ -1871,6 +2039,370 @@
     svgEl.addEventListener('pointermove', ev => { if (ev.buttons) showNearest(ev); });
     svgEl.addEventListener('pointerleave', () => { cap.textContent = baseCaption; });
     return wrap;
+  }
+
+  // ---------- guided session ----------
+  //
+  // A keyboard-free flow for logging between sets: pick the group (predicted),
+  // pick the exercise, then adjust a pre-filled set with steppers and log it.
+  // Repeat sets are a single tap.
+
+  const $wiz = document.getElementById('wiz');
+  let wiz = null;        // { step, catId, exId, weight, reps, drop, amrap }
+  let lastLogTs = null;  // for the rest counter
+  let restTimer = null;
+
+  // Most recent training date for a category, or null.
+  function lastTrainedDate(catId) {
+    const ids = new Set(state.exercises.filter(e => e.category === catId).map(e => e.id));
+    let last = null;
+    for (const l of state.logs) {
+      if (ids.has(l.exerciseId) && (last === null || l.date > last)) last = l.date;
+    }
+    return last;
+  }
+
+  // Which group is due: the one trained least recently. On a fixed rotation
+  // this reproduces the cycle, and it self-corrects if a day is skipped or
+  // taken out of order — no schedule to configure.
+  function groupsByDue() {
+    return CATS()
+      .map(c => {
+        const last = lastTrainedDate(c.id);
+        const trainedToday = last === todayKey();
+        return {
+          cat: c,
+          last,
+          trainedToday,
+          days: last ? Math.round((new Date(todayKey()) - new Date(last)) / 86400000) : null,
+          count: state.exercises.filter(e => e.category === c.id).length,
+        };
+      })
+      .filter(g => g.count > 0)
+      .sort((a, b) => {
+        if (a.trainedToday !== b.trainedToday) return a.trainedToday ? 1 : -1;
+        if (a.last === b.last) return 0;
+        if (a.last === null) return -1;   // never trained is most overdue
+        if (b.last === null) return 1;
+        return a.last < b.last ? -1 : 1;
+      });
+  }
+
+  function agoLabel(g) {
+    if (g.last === null) return 'not trained yet';
+    if (g.days === 0) return 'trained today';
+    if (g.days === 1) return 'trained yesterday';
+    return `${g.days} days ago`;
+  }
+
+  // Exercises for a group in the order they were done last session, with any
+  // that weren't trained then appended in routine order.
+  function wizExercises(catId) {
+    const exs = state.exercises.filter(e => e.category === catId);
+    const order = lastWorkoutOrder(exs);
+    if (!order) return exs;
+    const rank = id => order.posById.has(id) ? order.posById.get(id) : Infinity;
+    return exs.map((e, i) => ({ e, i }))
+      .sort((a, b) => (rank(a.e.id) - rank(b.e.id)) || (a.i - b.i))
+      .map(x => x.e);
+  }
+
+  function wizIncrement(ex) { return unit() === 'lb' ? 5 : 2.5; }
+
+  // Pre-fill a set: continue today's work if any, else the progression
+  // suggestion, else a repeat of last session.
+  function wizDefaults(ex) {
+    const today = todaySets(ex.id);
+    if (today.length) {
+      const lastToday = today[today.length - 1];
+      return { weight: roundW(toDisplay(lastToday.weight)), reps: lastToday.reps || 10 };
+    }
+    const last = lastSession(ex.id);
+    const hint = progressionHint(ex.id);
+    if (hint && hint.targetDisp) {
+      const src = last ? last.sets.find(s => !s.drop) : null;
+      return { weight: hint.targetDisp, reps: (src && src.reps) || 8, fromHint: true };
+    }
+    if (last) {
+      const src = last.sets.find(s => !s.drop) || last.sets[0];
+      return { weight: roundW(toDisplay(src.weight)), reps: src.reps || 10 };
+    }
+    return { weight: isBW(ex) ? 0 : 20, reps: 10 };
+  }
+
+  function openWiz() {
+    const due = groupsByDue();
+    wiz = { step: 'group', catId: due.length ? due[0].cat.id : activeCat };
+    $wiz.classList.add('show');
+    renderWiz();
+    startRestTimer();
+  }
+  function closeWiz() {
+    $wiz.classList.remove('show');
+    wiz = null;
+    stopRestTimer();
+  }
+
+  function startRestTimer() {
+    stopRestTimer();
+    restTimer = setInterval(renderRest, 1000);
+    renderRest();
+  }
+  function stopRestTimer() { clearInterval(restTimer); restTimer = null; }
+
+  function renderRest() {
+    const el = document.getElementById('wizRest');
+    if (!lastLogTs) { el.hidden = true; return; }
+    const secs = Math.floor((Date.now() - lastLogTs) / 1000);
+    el.hidden = false;
+    el.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')} rest`;
+    el.classList.toggle('ready', secs >= 45);
+  }
+
+  document.getElementById('wizFab').onclick = openWiz;
+  document.getElementById('wizClose').onclick = closeWiz;
+  document.getElementById('wizBack').onclick = () => {
+    if (!wiz) return;
+    if (wiz.step === 'group') { closeWiz(); return; }
+    if (wiz.step === 'exercise') wiz.step = 'group';
+    else wiz.step = 'exercise';
+    renderWiz();
+  };
+
+  function renderWiz() {
+    if (!wiz) return;
+    const body = document.getElementById('wizBody');
+    const foot = document.getElementById('wizFoot');
+    body.innerHTML = '';
+    foot.innerHTML = '';
+    const cat = catById(wiz.catId);
+    const ex = wiz.exId ? exById(wiz.exId) : null;
+
+    const catName = cat ? cat.name : '';
+    document.getElementById('wizTitle').textContent =
+      wiz.step === 'group' ? 'Today’s session' :
+      wiz.step === 'exercise' ? catName :
+      (ex ? ex.name : catName);
+    document.getElementById('wizSub').textContent =
+      wiz.step === 'group' ? 'Pick what you’re training' :
+      wiz.step === 'exercise' ? 'Pick an exercise' : catName;
+
+    if (wiz.step === 'group') return renderWizGroup(body, foot);
+    if (wiz.step === 'exercise') return renderWizExercise(body, foot);
+    if (wiz.step === 'set') return renderWizSet(body, foot, ex);
+    if (wiz.step === 'logged') return renderWizLogged(body, foot, ex);
+  }
+
+  function renderWizGroup(body, foot) {
+    const due = groupsByDue();
+    if (!due.length) {
+      body.innerHTML = '<div class="pr-empty">Add some exercises first, then come back.</div>';
+      return;
+    }
+    const top = due[0];
+    const hero = document.createElement('div');
+    hero.className = 'wiz-hero';
+    hero.innerHTML =
+      `<div class="why">${top.trainedToday ? 'Already trained today' : 'Due next'}</div>` +
+      `<div class="name">${escapeHtml(top.cat.name)}</div>` +
+      `<div class="sub">${agoLabel(top)} · ${top.count} exercise${top.count === 1 ? '' : 's'}</div>`;
+    body.appendChild(hero);
+
+    const rest = due.slice(1);
+    if (rest.length) {
+      body.insertAdjacentHTML('beforeend', '<div class="wiz-h">Or train something else</div>');
+      const list = document.createElement('div');
+      list.className = 'wiz-list';
+      for (const g of rest) {
+        const row = document.createElement('button');
+        row.className = 'wiz-row' + (g.trainedToday ? ' done' : '');
+        row.innerHTML = `<div class="meat"><div class="n">${escapeHtml(g.cat.name)}</div>` +
+          `<div class="d">${agoLabel(g)}</div></div><span class="go">›</span>`;
+        row.onclick = () => { wiz.catId = g.cat.id; wiz.step = 'exercise'; renderWiz(); };
+        list.appendChild(row);
+      }
+      body.appendChild(list);
+    }
+
+    const go = document.createElement('button');
+    go.className = 'btn-big';
+    go.textContent = `Start ${top.cat.name}`;
+    go.onclick = () => { wiz.catId = top.cat.id; wiz.step = 'exercise'; renderWiz(); };
+    foot.appendChild(go);
+  }
+
+  function renderWizExercise(body, foot) {
+    const exs = wizExercises(wiz.catId);
+    if (!exs.length) {
+      body.innerHTML = '<div class="pr-empty">No exercises in this group yet.</div>';
+      return;
+    }
+    const doneCount = exs.filter(e => todaySets(e.id).length).length;
+    body.insertAdjacentHTML('beforeend',
+      `<div class="wiz-h">${doneCount ? `${doneCount} done · pick the next` : 'Pick an exercise'}</div>`);
+    const list = document.createElement('div');
+    list.className = 'wiz-list';
+    exs.forEach((e, i) => {
+      const today = todaySets(e.id);
+      const last = lastSession(e.id);
+      const target = targetSets(e.id);
+      const doneN = workingSets(today).length;
+      const row = document.createElement('button');
+      row.className = 'wiz-row' + (today.length ? ' done' : '');
+      const detail = today.length
+        ? `${doneN}${target ? ' of ' + target : ''} set${doneN === 1 ? '' : 's'} today · ${escapeHtml(setsSummary(today, e))}`
+        : (last ? `Last: ${escapeHtml(setsSummary(last.sets, e))} · ${fmtDate(last.date)}` : 'No history yet');
+      row.innerHTML = `<span class="idx">${today.length ? '✓' : i + 1}</span>` +
+        `<div class="meat"><div class="n">${escapeHtml(e.name)}</div><div class="d">${detail}</div></div>` +
+        `<span class="go">›</span>`;
+      row.onclick = () => {
+        const d = wizDefaults(e);
+        wiz.exId = e.id; wiz.weight = d.weight; wiz.reps = d.reps;
+        wiz.fromHint = !!d.fromHint; wiz.drop = false; wiz.amrap = false;
+        wiz.step = 'set';
+        renderWiz();
+      };
+      list.appendChild(row);
+    });
+    body.appendChild(list);
+
+    const fin = document.createElement('button');
+    fin.className = 'btn-big ghost';
+    fin.textContent = 'Finish session';
+    fin.onclick = () => { closeWiz(); openFinish(); };
+    foot.appendChild(fin);
+  }
+
+  function renderWizSet(body, foot, ex) {
+    const today = todaySets(ex.id);
+    const last = lastSession(ex.id);
+    const target = targetSets(ex.id);
+    const setNo = workingSets(today).length + (wiz.drop ? 0 : 1);
+
+    const ref = document.createElement('div');
+    ref.className = 'wiz-ref';
+    ref.innerHTML = `<div class="lbl">${wiz.fromHint ? 'Suggested — you’re due an increase' : (last ? 'Last time' : 'First time')}</div>` +
+      `<div class="val">${last ? `<span class="w">${fmtBest(ex, last.sets)}</span> · ${escapeHtml(setsSummary(last.sets, ex))}` : 'No history — set your starting point'}</div>`;
+    body.appendChild(ref);
+
+    body.insertAdjacentHTML('beforeend',
+      `<div class="wiz-h">${wiz.drop ? 'Drop — continuing the set above' : `Set ${setNo}${target ? ' of ' + target : ''}`}</div>`);
+
+    if (!isBW(ex)) {
+      const inc = wizIncrement(ex);
+      body.appendChild(makeStepper(
+        `${unit()}${handSuffix(ex)}`, wiz.weight, inc, 0,
+        v => { wiz.weight = roundW(v); wiz.fromHint = false; renderWiz(); }));
+    }
+    body.appendChild(makeStepper('reps', wiz.reps, 1, 1, v => { wiz.reps = v; renderWiz(); }));
+
+    const toggles = document.createElement('div');
+    toggles.className = 'wiz-toggles';
+    const dropB = document.createElement('button');
+    dropB.className = 'type-toggle' + (wiz.drop ? ' on' : '');
+    dropB.textContent = '↓ Drop set';
+    dropB.disabled = today.length === 0;
+    dropB.onclick = () => { wiz.drop = !wiz.drop; renderWiz(); };
+    const failB = document.createElement('button');
+    failB.className = 'type-toggle' + (wiz.amrap ? ' on' : '');
+    failB.textContent = 'F To failure';
+    failB.onclick = () => { wiz.amrap = !wiz.amrap; renderWiz(); };
+    toggles.appendChild(dropB); toggles.appendChild(failB);
+    body.appendChild(toggles);
+
+    const log = document.createElement('button');
+    log.className = 'btn-big';
+    log.textContent = isBW(ex)
+      ? `Log ${wiz.reps} reps`
+      : `Log ${wiz.weight} ${unit()} × ${wiz.reps}`;
+    log.onclick = () => wizLog(ex);
+    foot.appendChild(log);
+  }
+
+  function makeStepper(caption, value, step, min, onChange) {
+    const el = document.createElement('div');
+    el.className = 'stepper';
+    const minus = document.createElement('button');
+    minus.textContent = '−';
+    minus.disabled = value - step < min;
+    minus.onclick = () => onChange(roundW(value - step));
+    const val = document.createElement('div');
+    val.className = 'val';
+    val.innerHTML = `<div class="big">${value}</div><div class="cap">${escapeHtml(caption)}</div>`;
+    const plus = document.createElement('button');
+    plus.textContent = '+';
+    plus.onclick = () => onChange(roundW(value + step));
+    el.appendChild(minus); el.appendChild(val); el.appendChild(plus);
+    return el;
+  }
+
+  function wizLog(ex) {
+    const today = todaySets(ex.id);
+    const asDrop = wiz.drop && today.length > 0;
+    const prevBest = allTimeBest(ex.id);
+    const weightKg = isBW(ex) ? 0 : fromDisplay(wiz.weight);
+    const set = {
+      id: uid(),
+      exerciseId: ex.id,
+      weight: weightKg,
+      reps: wiz.reps,
+      drop: asDrop || undefined,
+      amrap: wiz.amrap || undefined,
+      date: todayKey(),
+      ts: Date.now(),
+    };
+    state.logs.push(set);
+    lastLogTs = set.ts;
+    wiz.drop = false; wiz.amrap = false; wiz.fromHint = false;
+    wiz.step = 'logged';
+    dataChanged(); render(); renderWiz(); renderRest();
+    const metric = setMetric(ex, set);
+    if (!asDrop && prevBest !== null && metric > prevBest) {
+      celebratePR(`🎉 NEW PR — ${ex.name} ${isBW(ex) ? wiz.reps + ' reps' : fmtWeight(weightKg) + handSuffix(ex)}!`);
+    }
+  }
+
+  function renderWizLogged(body, foot, ex) {
+    const today = todaySets(ex.id);
+    const target = targetSets(ex.id);
+    const doneN = workingSets(today).length;
+    const remaining = target ? target - doneN : null;
+
+    body.insertAdjacentHTML('beforeend',
+      `<div class="wiz-done-note">✓ Logged · ${escapeHtml(setsSummary(today.slice(-1), ex))}</div>`);
+
+    const ref = document.createElement('div');
+    ref.className = 'wiz-ref';
+    ref.innerHTML = `<div class="lbl">${ex.name} today</div>` +
+      `<div class="val">${escapeHtml(setsSummary(today, ex))}` +
+      (target ? ` <span style="color:var(--text-dim);font-weight:600">· ${doneN} of ${target}</span>` : '') + `</div>`;
+    body.appendChild(ref);
+
+    if (remaining !== null && remaining > 0) {
+      body.insertAdjacentHTML('beforeend',
+        `<div class="wiz-h">${remaining} set${remaining === 1 ? '' : 's'} to go</div>`);
+    } else if (remaining !== null) {
+      body.insertAdjacentHTML('beforeend', '<div class="wiz-h">Target reached 💪</div>');
+    }
+
+    const again = document.createElement('button');
+    again.className = 'btn-big';
+    again.textContent = isBW(ex) ? `Same again — ${wiz.reps} reps` : `Same again — ${wiz.weight} ${unit()} × ${wiz.reps}`;
+    again.onclick = () => wizLog(ex);
+    foot.appendChild(again);
+
+    const pair = document.createElement('div');
+    pair.className = 'btn-pair';
+    const adjust = document.createElement('button');
+    adjust.className = 'btn-big ghost';
+    adjust.textContent = 'Adjust';
+    adjust.onclick = () => { wiz.step = 'set'; renderWiz(); };
+    const next = document.createElement('button');
+    next.className = 'btn-big ghost';
+    next.textContent = 'Next exercise';
+    next.onclick = () => { wiz.step = 'exercise'; renderWiz(); };
+    pair.appendChild(adjust); pair.appendChild(next);
+    foot.appendChild(pair);
   }
 
   // ---------- exercise editor ----------

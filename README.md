@@ -19,6 +19,25 @@ Need something outside the usual split? The **+** tab adds your own muscle
 group (Legs, Full Body, whatever), which behaves exactly like the built-in
 ones and can be renamed or deleted later.
 
+## Guided session
+
+Tap **▶ Guided session** for a keyboard-free flow built for logging between
+sets, when you have 30 seconds and want your heart rate up:
+
+1. **Today's session** — the app suggests the muscle group you've trained
+   least recently, which follows your rotation automatically. No schedule to
+   configure, and it self-corrects if you skip a day or train out of order.
+2. **Pick an exercise** — listed in the order you did them last session, with
+   last time's numbers and a ✓ against anything already done today.
+3. **Log the set** — pre-filled with what you did last time, or with the next
+   increment if you're due one. Big +/− steppers for weight and reps, and one
+   large button to log it.
+4. **Repeat** — after logging, "Same again" logs an identical set in a single
+   tap, with a running count of sets done and a rest timer in the corner.
+
+Everything logged this way is identical to logging by hand — same data, same
+sheet — so you can mix the two freely.
+
 ## How it works
 
 - **Log between sets** — open an exercise card, type the weight (reps optional)
