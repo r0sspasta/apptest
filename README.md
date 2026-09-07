@@ -74,6 +74,10 @@ sheet — so you can mix the two freely.
   day's work (exercises, sets, total volume, any PRs) across every muscle
   group you trained, and forces an immediate backup to your Google Sheet so
   the session is off your phone before you walk out.
+- **Add exercises** — the **+ Add exercise** button at the bottom of each day,
+  or **+ New exercise** inside the guided session.
+- **Backup** — *Export data* downloads a JSON backup; *Import data* restores it.
+  Or set up automatic Google Sheets sync (below) and never think about it.
 - **Installable & offline** — served over HTTPS it's a full PWA: "Add to Home
   Screen" gives a real app icon, full-screen launch, and offline support via a
   service worker.
@@ -89,12 +93,6 @@ the data to the sheet, replacing what's there. So **log on one device** (your
 phone) and treat everything else as read-only. If you do need to move your
 history between devices, use **Export data** on the old one and **Import data**
 on the new one.
-- **Add exercises** — the **+ Add exercise** button at the bottom of each day
-  adds a new exercise to that day.
-- **Backup** — *Export data* downloads a JSON backup; *Import data* restores it
-  (handy for moving to a new phone). Or set up automatic Google Sheets sync
-  (below) and never think about it.
-
 ## Google Sheets sync setup
 
 The tracker can automatically push every set you log to your own Google Sheet —
@@ -142,6 +140,11 @@ enable sync — in your own Google Sheet. Nothing is sent anywhere else.
 
 ## Running it
 
-The app is deployed with GitHub Pages via `.github/workflows/pages.yml` —
-open the Pages URL on your phone and use "Add to Home Screen" to make it feel
-like an app. You can also just open `index.html` directly in any browser.
+It's a single static page, so any static host works. A GitHub Pages workflow
+is included at `.github/workflows/pages.yml`, but Pages is not currently
+enabled on this account — see `BACKLOG.md`. Cloudflare Pages, Netlify or any
+equivalent will serve it from the repo root with no build step.
+
+Served over HTTPS, "Add to Home Screen" gives a real app icon, full-screen
+launch and offline support. You can also open `index.html` directly in any
+browser.
