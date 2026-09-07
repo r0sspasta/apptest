@@ -668,6 +668,7 @@
     padding: 17px 14px; cursor: pointer; font-family: inherit;
   }
   .btn-big:active { filter: brightness(1.12); }
+  .btn-big:disabled { opacity: 0.4; filter: none; }
   .btn-big.ghost {
     background: var(--surface-2); color: var(--text);
     border: 1px solid var(--border);
@@ -678,6 +679,24 @@
 
   .wiz-toggles { display: flex; gap: 8px; margin-bottom: 4px; }
   .wiz-toggles .type-toggle { font-size: 0.8rem; padding: 10px 8px; }
+
+  .wiz-add-row {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    width: 100%; min-height: 56px;
+    background: none; border: 2px dashed var(--border);
+    border-radius: 13px; color: var(--text-dim);
+    font-family: inherit; font-size: 0.92rem; font-weight: 700;
+    cursor: pointer; margin-top: 2px;
+  }
+  .wiz-add-row:active { border-color: var(--accent); color: var(--accent); }
+
+  .wiz-input {
+    width: 100%; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 13px;
+    color: var(--text); font-size: 1.05rem; font-family: inherit;
+    padding: 15px 14px; outline: none; margin-bottom: 14px;
+  }
+  .wiz-input:focus { border-color: var(--accent); }
 
   .wiz-ref {
     background: var(--surface); border: 1px solid var(--border);
@@ -2182,6 +2201,7 @@
     document.getElementById('wizTitle').textContent =
       wiz.step === 'group' ? 'Today’s session' :
       wiz.step === 'exercise' ? catName :
+      wiz.step === 'add' ? 'New exercise' :
       (ex ? ex.name : catName);
     document.getElementById('wizSub').textContent =
       wiz.step === 'group' ? 'Pick what you’re training' :
@@ -2189,6 +2209,7 @@
 
     if (wiz.step === 'group') return renderWizGroup(body, foot);
     if (wiz.step === 'exercise') return renderWizExercise(body, foot);
+    if (wiz.step === 'add') return renderWizAdd(body, foot);
     if (wiz.step === 'set') return renderWizSet(body, foot, ex);
     if (wiz.step === 'logged') return renderWizLogged(body, foot, ex);
   }
@@ -2255,15 +2276,21 @@
       row.innerHTML = `<span class="idx">${today.length ? '✓' : i + 1}</span>` +
         `<div class="meat"><div class="n">${escapeHtml(e.name)}</div><div class="d">${detail}</div></div>` +
         `<span class="go">›</span>`;
-      row.onclick = () => {
-        const d = wizDefaults(e);
-        wiz.exId = e.id; wiz.weight = d.weight; wiz.reps = d.reps;
-        wiz.fromHint = !!d.fromHint; wiz.drop = false; wiz.amrap = false;
-        wiz.step = 'set';
-        renderWiz();
-      };
+      row.onclick = () => wizStartExercise(e);
       list.appendChild(row);
     });
+
+    const add = document.createElement('button');
+    add.className = 'wiz-add-row';
+    add.textContent = '+ New exercise';
+    add.onclick = () => {
+      wiz.newName = '';
+      wiz.newMode = 'weight';
+      wiz.addFocused = false;
+      wiz.step = 'add';
+      renderWiz();
+    };
+    list.appendChild(add);
     body.appendChild(list);
 
     const fin = document.createElement('button');
@@ -2271,6 +2298,69 @@
     fin.textContent = 'Finish session';
     fin.onclick = () => { closeWiz(); openFinish(); };
     foot.appendChild(fin);
+  }
+
+  // Shared by the picker and by "add new": set up the set screen for an
+  // exercise and go there.
+  function wizStartExercise(e) {
+    const d = wizDefaults(e);
+    wiz.exId = e.id; wiz.weight = d.weight; wiz.reps = d.reps;
+    wiz.fromHint = !!d.fromHint; wiz.drop = false; wiz.amrap = false;
+    wiz.step = 'set';
+    renderWiz();
+  }
+
+  function renderWizAdd(body, foot) {
+    const cat = catById(wiz.catId);
+    body.insertAdjacentHTML('beforeend',
+      `<div class="wiz-h">New exercise in ${escapeHtml(cat ? cat.name : '')}</div>`);
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'wiz-input';
+    input.placeholder = 'Exercise name';
+    input.autocomplete = 'off';
+    input.value = wiz.newName || '';
+    input.oninput = () => { wiz.newName = input.value; create.disabled = !input.value.trim(); };
+    body.appendChild(input);
+
+    body.insertAdjacentHTML('beforeend', '<div class="wiz-h">How is it measured?</div>');
+    const seg = document.createElement('div');
+    seg.className = 'seg';
+    seg.style.marginBottom = '4px';
+    for (const [mode, label] of [['weight', 'Weighted'], ['bodyweight', 'Bodyweight']]) {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.className = wiz.newMode === mode ? 'on' : '';
+      b.onclick = () => { wiz.newMode = mode; renderWiz(); };
+      seg.appendChild(b);
+    }
+    body.appendChild(seg);
+
+    const create = document.createElement('button');
+    create.className = 'btn-big';
+    create.textContent = 'Add and start';
+    create.disabled = !(wiz.newName || '').trim();
+    create.onclick = () => {
+      const name = (wiz.newName || '').trim();
+      if (!name) { input.focus(); return; }
+      const ex = { id: uid(), name, category: wiz.catId };
+      if (wiz.newMode === 'bodyweight') ex.mode = 'bodyweight';
+      state.exercises.push(ex);
+      wiz.newName = '';
+      dataChanged(); render();
+      toast(`Added “${name}”`);
+      wizStartExercise(ex);
+    };
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') create.click(); });
+    foot.appendChild(create);
+
+    // Focus once on arrival, not on every re-render — otherwise switching
+    // Weighted/Bodyweight would keep popping the keyboard back up.
+    if (!wiz.addFocused) {
+      wiz.addFocused = true;
+      setTimeout(() => input.focus(), 60);
+    }
   }
 
   function renderWizSet(body, foot, ex) {

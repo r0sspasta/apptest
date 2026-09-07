@@ -28,7 +28,6 @@ Supersets, drop sets and sets to failure all shipped. Remaining refinements:
 
 - Supersets aren't reflected in the flow — after logging one half, it should
   offer the partner exercise next rather than returning to the full list.
-- No way to add an exercise from inside the guided flow; you have to leave it.
 - The group prediction ignores rest days, so on a rest day it still suggests
   whatever is most overdue rather than saying "nothing due".
 
