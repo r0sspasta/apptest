@@ -28,7 +28,9 @@ sets, when you have 30 seconds and want your heart rate up:
    least recently, which follows your rotation automatically. No schedule to
    configure, and it self-corrects if you skip a day or train out of order.
 2. **Pick an exercise** — listed in the order you did them last session, with
-   last time's numbers and a ✓ against anything already done today.
+   last time's numbers and a ✓ against anything already done today. **+ New
+   exercise** adds one to the group without leaving the flow, and takes you
+   straight into logging its first set.
 3. **Log the set** — pre-filled with what you did last time, or with the next
    increment if you're due one. Big +/− steppers for weight and reps, and one
    large button to log it.
