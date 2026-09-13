@@ -14,6 +14,39 @@ Supersets, drop sets and sets to failure all shipped. Remaining refinements:
 - A rest timer, if built, should start after a superset round rather than
   after each set.
 
+## Weight increments
+
+The app assumes one increment everywhere: 2.5 kg (5 lb). That's hardcoded in
+two places — the guided session's weight stepper, and the progression hint's
+suggested next weight — and it doesn't match how weight actually moves on
+different equipment. A cable stack might go up in 5 kg pins, dumbbells in 2 kg
+steps, a barbell in 1.25 kg per side (2.5 kg total), and microplates finer
+than any of them.
+
+Consequences today: on a machine with 5 kg pins the stepper needs two taps per
+notch, and the hint suggests a weight that doesn't physically exist. On
+dumbbells the reverse — it offers a jump the rack can't make.
+
+Approach, in order of preference:
+
+- **Per-exercise increment**, set in the Edit dialog alongside target sets.
+  Highest fidelity, and it's per-exercise information the way per-hand and
+  bodyweight already are.
+- **Default it from history** rather than making it another field to fill in:
+  the smallest weight change ever recorded for that exercise is a good guess
+  at its real increment, so most exercises would configure themselves after a
+  couple of sessions.
+- **A second, larger step** in the wizard (−5 / −2.5 / +2.5 / +5) for when the
+  jump is bigger than one notch, so heavy changes don't need six taps.
+
+Notes:
+
+- The progression hint must use the same per-exercise increment, or it will
+  keep suggesting impossible weights.
+- For per-hand exercises the increment applies to the per-hand number, so a
+  2 kg dumbbell step is a 4 kg total change.
+- Bodyweight exercises need this for their optional added weight too.
+
 ## Coaching
 
 - **Stall detection** — flag an exercise that has not progressed for 3–4
