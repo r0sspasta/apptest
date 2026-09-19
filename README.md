@@ -33,7 +33,9 @@ sets, when you have 30 seconds and want your heart rate up:
    straight into logging its first set.
 3. **Log the set** — pre-filled with what you did last time, or with the next
    increment if you're due one. Big +/− steppers for weight and reps, and one
-   large button to log it.
+   large button to log it. The steppers move in that exercise's own increment
+   (learned from your history, or set explicitly in **Edit**), and tapping the
+   number lets you type an exact value.
 4. **Repeat** — after logging, "Same again" logs an identical set in a single
    tap, with a running count of sets done and a rest timer in the corner.
 

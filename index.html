@@ -660,6 +660,17 @@
     font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.6px;
     color: var(--text-dim); margin-top: 3px;
   }
+  .stepper .val { cursor: pointer; }
+  .step-input {
+    width: 100%; background: none; border: none;
+    color: var(--accent); font-family: inherit;
+    font-size: 2rem; font-weight: 800; line-height: 1.05;
+    text-align: center; outline: none;
+    font-variant-numeric: tabular-nums;
+    -moz-appearance: textfield;
+  }
+  .step-input::-webkit-outer-spin-button,
+  .step-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
   .btn-big {
     width: 100%; border: none; border-radius: 14px;
@@ -806,6 +817,8 @@
     </label>
     <div class="settings-h">Target sets</div>
     <input type="number" id="exTargetSets" min="1" max="20" placeholder="auto (from last session)">
+    <div class="settings-h">Weight increment</div>
+    <select id="exIncrement"></select>
     <div class="settings-h">Superset with</div>
     <select id="exSuperset"></select>
     <div class="modal-actions" style="margin-top:16px">
@@ -1316,7 +1329,7 @@
     if (bestWeight(s2.sets) !== best) return null;
     const hitReps = sess => sess.sets.some(x => x.weight === best && (x.reps || 0) >= 8);
     if (!hitReps(s1) || !hitReps(s2)) return null;
-    const inc = unit() === 'lb' ? 5 : 2.5;
+    const inc = wizIncrement(ex);
     const suffix = ' ' + unit() + handSuffix(ex);
     return {
       targetDisp: roundW(toDisplay(best) + inc),
@@ -2126,7 +2139,39 @@
       .map(x => x.e);
   }
 
-  function wizIncrement(ex) { return unit() === 'lb' ? 5 : 2.5; }
+  // Weight increment for an exercise, in display units.
+  //
+  // An explicit per-exercise setting wins. Otherwise it's inferred from the
+  // smallest weight change ever recorded for that exercise, which is a good
+  // read on what the equipment actually does (5 kg cable pins, 2 kg dumbbell
+  // steps, 1.25 kg microplates) — so most exercises configure themselves.
+  function wizIncrement(ex) {
+    if (ex && typeof ex.increment === 'number' && ex.increment > 0) {
+      return roundW(toDisplay(ex.increment));
+    }
+    const inferred = inferIncrementKg(ex);
+    if (inferred) return roundW(toDisplay(inferred));
+    return unit() === 'lb' ? 5 : 2.5;
+  }
+
+  function inferIncrementKg(ex) {
+    if (!ex) return null;
+    const weights = [...new Set(
+      state.logs.filter(l => l.exerciseId === ex.id && !l.drop && l.weight > 0).map(l => l.weight)
+    )].sort((a, b) => a - b);
+    if (weights.length < 2) return null;
+    let smallest = Infinity;
+    for (let i = 1; i < weights.length; i++) {
+      const d = weights[i] - weights[i - 1];
+      if (d > 0.05 && d < smallest) smallest = d;
+    }
+    return smallest === Infinity ? null : roundW(smallest);
+  }
+
+  // Increment choices offered in the editor, in the current display unit.
+  function incrementChoices() {
+    return unit() === 'lb' ? [1, 2.5, 5, 10, 25] : [0.25, 0.5, 1, 1.25, 2, 2.5, 5, 10];
+  }
 
   // Pre-fill a set: continue today's work if any, else the progression
   // suggestion, else a repeat of last session.
@@ -2382,7 +2427,8 @@
       const inc = wizIncrement(ex);
       body.appendChild(makeStepper(
         `${unit()}${handSuffix(ex)}`, wiz.weight, inc, 0,
-        v => { wiz.weight = roundW(v); wiz.fromHint = false; renderWiz(); }));
+        v => { wiz.weight = roundW(v); wiz.fromHint = false; renderWiz(); },
+        { hint: inc }));
     }
     body.appendChild(makeStepper('reps', wiz.reps, 1, 1, v => { wiz.reps = v; renderWiz(); }));
 
@@ -2409,19 +2455,57 @@
     foot.appendChild(log);
   }
 
-  function makeStepper(caption, value, step, min, onChange) {
+  // Stepper with tap-to-type: the +/- buttons move by `step`, and tapping the
+  // number turns it into an input for an exact value, so an odd weight never
+  // needs a dozen taps.
+  function makeStepper(caption, value, step, min, onChange, opts) {
+    const o = opts || {};
     const el = document.createElement('div');
     el.className = 'stepper';
+
     const minus = document.createElement('button');
     minus.textContent = '−';
     minus.disabled = value - step < min;
     minus.onclick = () => onChange(roundW(value - step));
+
     const val = document.createElement('div');
     val.className = 'val';
-    val.innerHTML = `<div class="big">${value}</div><div class="cap">${escapeHtml(caption)}</div>`;
+    val.title = 'Tap to type an exact value';
+    const render = () => {
+      val.innerHTML = `<div class="big">${value}</div>` +
+        `<div class="cap">${escapeHtml(caption)}${o.hint ? ` · ±${o.hint}` : ''}</div>`;
+    };
+    render();
+
+    val.onclick = () => {
+      if (val.querySelector('input')) return;
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.className = 'step-input';
+      input.step = 'any';
+      input.min = String(min);
+      input.value = String(value);
+      input.inputMode = 'decimal';
+      val.innerHTML = '';
+      val.appendChild(input);
+      val.insertAdjacentHTML('beforeend', `<div class="cap">${escapeHtml(caption)} · exact</div>`);
+      let settled = false;
+      const commit = () => {
+        if (settled) return;
+        settled = true;
+        const v = parseFloat(input.value);
+        if (isNaN(v) || v < min) { render(); return; }
+        onChange(roundW(v));
+      };
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); commit(); } });
+      input.addEventListener('blur', commit);
+      setTimeout(() => { input.focus(); input.select(); }, 30);
+    };
+
     const plus = document.createElement('button');
     plus.textContent = '+';
     plus.onclick = () => onChange(roundW(value + step));
+
     el.appendChild(minus); el.appendChild(val); el.appendChild(plus);
     return el;
   }
@@ -2516,6 +2600,34 @@
     document.getElementById('exPerHand').checked = isPerHand(ex);
     document.getElementById('exTargetSets').value = typeof ex.targetSets === 'number' ? ex.targetSets : '';
 
+    // Weight increment: explicit choice, or auto from history.
+    const incSel = document.getElementById('exIncrement');
+    incSel.innerHTML = '';
+    const inferred = inferIncrementKg(ex);
+    const autoOpt = document.createElement('option');
+    autoOpt.value = '';
+    autoOpt.textContent = inferred
+      ? `Auto — ${roundW(toDisplay(inferred))} ${unit()} (from your history)`
+      : `Auto — ${unit() === 'lb' ? 5 : 2.5} ${unit()} (default)`;
+    incSel.appendChild(autoOpt);
+    for (const c of incrementChoices()) {
+      const opt = document.createElement('option');
+      opt.value = String(c);
+      opt.textContent = `${c} ${unit()}${isPerHand(ex) ? ' per hand' : ''}`;
+      incSel.appendChild(opt);
+    }
+    incSel.value = typeof ex.increment === 'number' ? String(roundW(toDisplay(ex.increment))) : '';
+    if (typeof ex.increment === 'number' && incSel.selectedIndex < 0) {
+      // A value set in the other unit won't match the presets — keep it
+      // rather than silently resetting to auto.
+      const cur = roundW(toDisplay(ex.increment));
+      const opt = document.createElement('option');
+      opt.value = String(cur);
+      opt.textContent = `${cur} ${unit()} (current)`;
+      incSel.appendChild(opt);
+      incSel.value = String(cur);
+    }
+
     // Superset picker: any other exercise in the same muscle group.
     const sel = document.getElementById('exSuperset');
     sel.innerHTML = '<option value="">Nothing — done on its own</option>';
@@ -2558,6 +2670,12 @@
       else delete editingEx.perHand;
     }
     if (!isNaN(t) && t > 0) editingEx.targetSets = t; else delete editingEx.targetSets;
+
+    // Increment is stored in kg like every other weight, so switching units
+    // later doesn't change what the stepper actually does.
+    const incVal = parseFloat(document.getElementById('exIncrement').value);
+    if (!isNaN(incVal) && incVal > 0) editingEx.increment = roundW(fromDisplay(incVal));
+    else delete editingEx.increment;
 
     // Supersets are a shared group id, so pairing is symmetric: picking a
     // partner puts both exercises in the same group.
