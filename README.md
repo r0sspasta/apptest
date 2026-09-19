@@ -95,6 +95,7 @@ the data to the sheet, replacing what's there. So **log on one device** (your
 phone) and treat everything else as read-only. If you do need to move your
 history between devices, use **Export data** on the old one and **Import data**
 on the new one.
+
 ## Google Sheets sync setup
 
 The tracker can automatically push every set you log to your own Google Sheet —
