@@ -33,7 +33,9 @@ sets, when you have 30 seconds and want your heart rate up:
    straight into logging its first set.
 3. **Log the set** — pre-filled with what you did last time, or with the next
    increment if you're due one. Big +/− steppers for weight and reps, and one
-   large button to log it.
+   large button to log it. The steppers move in that exercise's own increment
+   (learned from your history, or set explicitly in **Edit**), and tapping the
+   number lets you type an exact value.
 4. **Repeat** — after logging, "Same again" logs an identical set in a single
    tap, with a running count of sets done and a rest timer in the corner.
 
@@ -93,6 +95,7 @@ the data to the sheet, replacing what's there. So **log on one device** (your
 phone) and treat everything else as read-only. If you do need to move your
 history between devices, use **Export data** on the old one and **Import data**
 on the new one.
+
 ## Google Sheets sync setup
 
 The tracker can automatically push every set you log to your own Google Sheet —
