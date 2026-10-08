@@ -39,6 +39,11 @@ sets, when you have 30 seconds and want your heart rate up:
 4. **Repeat** — after logging, "Same again" logs an identical set in a single
    tap, with a running count of sets done and a rest timer in the corner.
 
+The exercise you're part-way through is highlighted and marked **now**, and the
+list opens scrolled to it, so looking ahead at what's coming doesn't lose your
+place. Total session time ticks quietly in the header, and the finish summary
+records how long the session took.
+
 Everything logged this way is identical to logging by hand — same data, same
 sheet — so you can mix the two freely.
 
