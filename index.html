@@ -331,9 +331,11 @@
   .finish-btn:active { filter: brightness(1.1); }
   .finish-btn.done { background: var(--surface); color: var(--green); border: 1px solid var(--green); }
 
-  .sum-tiles { display: flex; gap: 8px; margin-bottom: 14px; }
+  .sum-tiles { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .sum-tile .v { font-size: 1.25rem; font-weight: 800; font-variant-numeric: tabular-nums; }
   .sum-tile {
-    flex: 1; background: var(--surface-2); border: 1px solid var(--border);
+    flex: 1 1 calc(50% - 20px); min-width: 72px;
+    background: var(--surface-2); border: 1px solid var(--border);
     border-radius: 12px; padding: 11px 8px; text-align: center;
   }
   .sum-tile .v { font-size: 1.25rem; font-weight: 800; }
@@ -582,6 +584,23 @@
     border-radius: 999px; padding: 4px 10px; white-space: nowrap;
   }
   .wiz-rest.ready { color: var(--green); border-color: var(--green); }
+  .wiz-session {
+    font-family: ui-monospace, monospace;
+    color: var(--text-dim);
+  }
+  .wiz-session::before { content: ' · '; }
+
+  .wiz-row.current {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .wiz-row.current .idx {
+    background: var(--accent); color: #fff;
+  }
+  .wiz-row.current .n::after {
+    content: ' · now';
+    color: var(--accent); font-weight: 800; font-size: 0.78rem;
+  }
 
   .wiz-body {
     flex: 1 1 auto; overflow-y: auto;
@@ -789,7 +808,7 @@
     <button class="wiz-back" id="wizBack" title="Back">‹</button>
     <div class="wiz-crumb">
       <div class="t" id="wizTitle"></div>
-      <div class="s" id="wizSub"></div>
+      <div class="s"><span id="wizSub"></span><span class="wiz-session" id="wizSession"></span></div>
     </div>
     <span class="wiz-rest" id="wizRest" hidden></span>
     <button class="wiz-close" id="wizClose" title="Close">✕</button>
@@ -1936,7 +1955,9 @@
         }
       }
     }
-    return { exercises: seen.size, sets, volumeKg, byCat, prs };
+    return { exercises: seen.size, sets, volumeKg, byCat, prs,
+             firstTs: Math.min(...logs.map(l => l.ts)),
+             lastTs: Math.max(...logs.map(l => l.ts)) };
   }
 
   function ordinalSuffix(n) {
@@ -2197,6 +2218,16 @@
   function openWiz() {
     const due = groupsByDue();
     wiz = { step: 'group', catId: due.length ? due[0].cat.id : activeCat };
+    // Seed the rest clock from the last set actually logged today, so opening
+    // the wizard part-way through a session shows real rest rather than
+    // nothing until the next set.
+    if (lastLogTs === null) {
+      let latest = null;
+      for (const l of state.logs) {
+        if (l.date === todayKey() && (latest === null || l.ts > latest)) latest = l.ts;
+      }
+      lastLogTs = latest;
+    }
     $wiz.classList.add('show');
     renderWiz();
     startRestTimer();
@@ -2209,18 +2240,44 @@
 
   function startRestTimer() {
     stopRestTimer();
-    restTimer = setInterval(renderRest, 1000);
-    renderRest();
+    restTimer = setInterval(renderClocks, 1000);
+    renderClocks();
   }
   function stopRestTimer() { clearInterval(restTimer); restTimer = null; }
 
-  function renderRest() {
-    const el = document.getElementById('wizRest');
-    if (!lastLogTs) { el.hidden = true; return; }
-    const secs = Math.floor((Date.now() - lastLogTs) / 1000);
-    el.hidden = false;
-    el.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')} rest`;
-    el.classList.toggle('ready', secs >= 45);
+  // When today's training began — the first set logged today, across groups.
+  function sessionStartTs() {
+    let first = null;
+    for (const l of state.logs) {
+      if (l.date === todayKey() && (first === null || l.ts < first)) first = l.ts;
+    }
+    return first;
+  }
+
+  function fmtClock(ms) {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    const mm = String(m).padStart(2, '0');
+    const ss = String(s).padStart(2, '0');
+    return h ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+  }
+
+  // Rest since the last set, and total elapsed for today's session. Both tick
+  // on the same interval; the session clock is deliberately understated.
+  function renderClocks() {
+    const rest = document.getElementById('wizRest');
+    if (!lastLogTs) { rest.hidden = true; }
+    else {
+      const secs = Math.floor((Date.now() - lastLogTs) / 1000);
+      rest.hidden = false;
+      rest.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')} rest`;
+      rest.classList.toggle('ready', secs >= 45);
+    }
+    const sess = document.getElementById('wizSession');
+    const start = sessionStartTs();
+    sess.textContent = start ? fmtClock(Date.now() - start) : '';
   }
 
   document.getElementById('wizFab').onclick = openWiz;
@@ -2308,20 +2365,31 @@
       `<div class="wiz-h">${doneCount ? `${doneCount} done · pick the next` : 'Pick an exercise'}</div>`);
     const list = document.createElement('div');
     list.className = 'wiz-list';
+    // The one you're on: whatever was logged most recently today in this group.
+    let currentId = null, currentTs = -1;
+    for (const l of state.logs) {
+      if (l.date !== todayKey()) continue;
+      const e = exById(l.exerciseId);
+      if (!e || e.category !== wiz.catId) continue;
+      if (l.ts > currentTs) { currentTs = l.ts; currentId = e.id; }
+    }
+    let currentRow = null;
     exs.forEach((e, i) => {
       const today = todaySets(e.id);
       const last = lastSession(e.id);
       const target = targetSets(e.id);
       const doneN = workingSets(today).length;
+      const isCurrent = e.id === currentId;
       const row = document.createElement('button');
-      row.className = 'wiz-row' + (today.length ? ' done' : '');
+      row.className = 'wiz-row' + (today.length ? ' done' : '') + (isCurrent ? ' current' : '');
       const detail = today.length
         ? `${doneN}${target ? ' of ' + target : ''} set${doneN === 1 ? '' : 's'} today · ${escapeHtml(setsSummary(today, e))}`
         : (last ? `Last: ${escapeHtml(setsSummary(last.sets, e))} · ${fmtDate(last.date)}` : 'No history yet');
-      row.innerHTML = `<span class="idx">${today.length ? '✓' : i + 1}</span>` +
+      row.innerHTML = `<span class="idx">${isCurrent ? '●' : (today.length ? '✓' : i + 1)}</span>` +
         `<div class="meat"><div class="n">${escapeHtml(e.name)}</div><div class="d">${detail}</div></div>` +
         `<span class="go">›</span>`;
       row.onclick = () => wizStartExercise(e);
+      if (isCurrent) currentRow = row;
       list.appendChild(row);
     });
 
@@ -2337,6 +2405,12 @@
     };
     list.appendChild(add);
     body.appendChild(list);
+
+    // Land on the exercise you're mid-way through, so browsing ahead and
+    // coming back doesn't mean hunting for your place.
+    if (currentRow) {
+      setTimeout(() => currentRow.scrollIntoView({ block: 'center', behavior: 'auto' }), 0);
+    }
 
     const fin = document.createElement('button');
     fin.className = 'btn-big ghost';
@@ -2529,7 +2603,7 @@
     lastLogTs = set.ts;
     wiz.drop = false; wiz.amrap = false; wiz.fromHint = false;
     wiz.step = 'logged';
-    dataChanged(); render(); renderWiz(); renderRest();
+    dataChanged(); render(); renderWiz(); renderClocks();
     const metric = setMetric(ex, set);
     if (!asDrop && prevBest !== null && metric > prevBest) {
       celebratePR(`🎉 NEW PR — ${ex.name} ${isBW(ex) ? wiz.reps + ' reps' : fmtWeight(weightKg) + handSuffix(ex)}!`);
@@ -2785,10 +2859,12 @@
     const body = document.getElementById('finishBody');
     if (!s) { body.innerHTML = '<div class="pr-empty">Nothing logged today yet.</div>'; return; }
     const vol = unit() === 'lb' ? s.volumeKg / KG_PER_LB : s.volumeKg;
+    const dur = s.lastTs && s.firstTs && s.lastTs > s.firstTs ? s.lastTs - s.firstTs : 0;
     let html = `<div class="sum-tiles">` +
       `<div class="sum-tile"><div class="v">${s.exercises}</div><div class="k">Exercises</div></div>` +
       `<div class="sum-tile"><div class="v">${s.sets}</div><div class="k">Sets</div></div>` +
       `<div class="sum-tile"><div class="v">${Math.round(vol).toLocaleString()}</div><div class="k">${unit()} volume</div></div>` +
+      (dur ? `<div class="sum-tile"><div class="v">${Math.max(1, Math.round(dur / 60000))}</div><div class="k">minutes</div></div>` : '') +
       `</div>`;
     if (s.prs.length) {
       html += `<div class="sum-row sum-pr">🏆 New PR${s.prs.length > 1 ? 's' : ''}: ` +
