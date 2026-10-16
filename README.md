@@ -64,6 +64,12 @@ sheet — so you can mix the two freely.
   beating one mid-workout earns a celebration.
 - **Training calendar** — the 📅 button shows a month view of your workout
   days and your current weekly streak.
+- **Past sessions** — the 📋 button lists every day you trained, newest first,
+  with the muscle groups, exercise and set counts, volume and how long it
+  took. Tap one to see what you did.
+- **Setup notes** — a persistent line per exercise for seat height, pin
+  position, grip width or machine number, shown on the card and in the guided
+  session when you walk up to the machine. Set it in **Edit**.
 - **Last-session order** — each day shows the order you actually did the
   exercises last time, and you can drag the ⠿ handle to arrange cards to match
   your routine. As you train, exercises you've started move to a "done today"
@@ -145,6 +151,16 @@ anyone you give it to could write rows to your sheet, so don't share it.
 
 Your logs live in your browser's `localStorage` on your device, and — if you
 enable sync — in your own Google Sheet. Nothing is sent anywhere else.
+
+## Tests
+
+Browser tests live in `tests/` and drive the real page in headless Chromium:
+
+```sh
+cd tests && npm install && npm test
+```
+
+See `tests/README.md` for what each spec guards against.
 
 ## Running it
 

@@ -52,7 +52,7 @@ exercise's history, plus tap-to-type for exact values. Remaining:
 
 ## Engineering
 
-- **Commit the test suite.** Every change so far was verified against a
-  headless-browser suite, but those tests live outside the repo, so nothing
-  guards against regressions. Committing them makes everything above safer to
-  build — particularly the set types, which touch logic used everywhere.
+- **Test suite — done.** `tests/` runs the real page in headless Chromium.
+  Not covered yet: drag-to-reorder (synthetic pointer sequences), the PWA
+  service worker, and the Apps Script itself (only the payload the app sends
+  is checked, not what the script writes to the sheet).
