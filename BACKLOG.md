@@ -25,6 +25,20 @@ exercise's history, plus tap-to-type for exact values. Remaining:
 - No quick "bigger jump" button; a large change means several taps or typing
   the value.
 
+## Variations
+
+Built: variation groups with recency ranking and tag-based pairing. Known
+limits:
+
+- The suggestion is greedy — it picks the stalest, then the stalest that
+  shares no tag. That keeps everything evenly used over time and self-corrects
+  after skipped days, but it will not always reproduce a perfect N-session
+  cycle; it may repeat one variation before covering the last.
+- Tags are free text with no validation, so a typo (`dumbell`) silently stops
+  the pairing rule from matching.
+- The card view lists the whole rotation, which gets long past about six
+  variations.
+
 ## Coaching
 
 - **Stall detection** — flag an exercise that has not progressed for 3–4

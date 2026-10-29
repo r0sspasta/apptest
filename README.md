@@ -67,6 +67,13 @@ sheet — so you can mix the two freely.
 - **Past sessions** — the 📋 button lists every day you trained, newest first,
   with the muscle groups, exercise and set counts, volume and how long it
   took. Tap one to see what you did.
+- **Variations** — link alternatives of the same lift (flat/incline/decline ×
+  barbell/dumbbell bench, say) into a variation group in **Edit**. They
+  collapse to one row in the guided session showing which is due, and open
+  into the full list ranked by how long it's been — so you can always see what
+  you did last. Give each one tags like `barbell, flat` and, once you've done
+  one from the group today, the app stops suggesting anything sharing a tag
+  with it, keeping a session to one of each kind at different angles.
 - **Setup notes** — a persistent line per exercise for seat height, pin
   position, grip width or machine number, shown on the card and in the guided
   session when you walk up to the machine. Set it in **Edit**.
