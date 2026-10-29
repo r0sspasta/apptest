@@ -620,6 +620,7 @@
     color: var(--text-dim);
   }
   .wiz-session::before { content: ' · '; }
+  .wiz-session:empty::before { content: none; }
 
   .wiz-row.current {
     border-color: var(--accent);
@@ -632,6 +633,8 @@
     content: ' · now';
     color: var(--accent); font-weight: 800; font-size: 0.78rem;
   }
+  /* In the variations list the highlight means "due next", not "in progress". */
+  .wiz-list.variants .wiz-row.current .n::after { content: none; }
 
   .wiz-body {
     flex: 1 1 auto; overflow-y: auto;
@@ -759,6 +762,18 @@
   }
   .wiz-input:focus { border-color: var(--accent); }
 
+  .var-badge {
+    display: inline-block; margin-left: 7px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text-dim); border-radius: 999px;
+    padding: 0 7px; font-size: 0.68rem; font-weight: 800;
+    vertical-align: 1px;
+  }
+  .due-tag {
+    margin-left: 7px; color: var(--accent);
+    font-size: 0.68rem; font-weight: 800;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
   .wiz-ref {
     background: var(--surface); border: 1px solid var(--border);
     border-radius: 13px; padding: 12px 14px; margin-bottom: 14px;
@@ -873,6 +888,10 @@
     <input type="number" id="exTargetSets" min="1" max="20" placeholder="auto (from last session)">
     <div class="settings-h">Weight increment</div>
     <select id="exIncrement"></select>
+    <div class="settings-h">Variation of</div>
+    <select id="exVariant"></select>
+    <input type="text" id="exTags" maxlength="60" autocomplete="off"
+           placeholder="Variation tags, e.g. barbell, flat">
     <div class="settings-h">Superset with</div>
     <select id="exSuperset"></select>
     <div class="modal-actions" style="margin-top:16px">
@@ -1645,7 +1664,10 @@
     const ssTag = partners.length
       ? `<span class="superset-tag">⇄ Superset with ${escapeHtml(partners.map(p => p.name).join(', '))}</span>`
       : '';
-    head.innerHTML = `<div>${ssTag}<div class="ex-name">${badge}${escapeHtml(ex.name)}</div><div class="ex-meta">${metaHtml}</div></div>`;
+    const vMembers = variantMembers(ex);
+    const vBadge = vMembers.length > 1
+      ? `<span class="var-badge" title="One of ${vMembers.length} variations">⟳ ${vMembers.length}</span>` : '';
+    head.innerHTML = `<div>${ssTag}<div class="ex-name">${badge}${escapeHtml(ex.name)}${vBadge}</div><div class="ex-meta">${metaHtml}</div></div>`;
     if (partners.length) card.classList.add('superset-rail');
     const right = document.createElement('div');
     right.style.cssText = 'display:flex;align-items:center;gap:2px';
@@ -1672,6 +1694,18 @@
     // --- body ---
     const body = document.createElement('div');
     body.className = 'card-body';
+
+    if (vMembers.length > 1) {
+      const due = dueVariant(vMembers);
+      const vn = document.createElement('div');
+      vn.className = 'setup-note';
+      const ranked = rankVariants(vMembers)
+        .map(m => `${escapeHtml(m.name)} <span style="color:var(--text-dim)">${fmtAgo(lastDoneDate(m.id))}</span>`)
+        .join('<br>');
+      vn.innerHTML = `<span class="k">Rotation</span><span>` +
+        (due ? `due <strong>${escapeHtml(due.name)}</strong><br>` : '') + ranked + `</span>`;
+      body.appendChild(vn);
+    }
 
     if (ex.setup) {
       const sn = document.createElement('div');
@@ -2338,6 +2372,7 @@
     if (!wiz) return;
     if (wiz.step === 'group') { closeWiz(); return; }
     if (wiz.step === 'exercise') wiz.step = 'group';
+    else if ((wiz.step === 'set' || wiz.step === 'logged') && wiz.cameFromVariants) wiz.step = 'variants';
     else wiz.step = 'exercise';
     renderWiz();
   };
@@ -2356,6 +2391,7 @@
       wiz.step === 'group' ? 'Today’s session' :
       wiz.step === 'exercise' ? catName :
       wiz.step === 'add' ? 'New exercise' :
+      wiz.step === 'variants' ? 'Variations' :
       (ex ? ex.name : catName);
     document.getElementById('wizSub').textContent =
       wiz.step === 'group' ? 'Pick what you’re training' :
@@ -2364,6 +2400,7 @@
     if (wiz.step === 'group') return renderWizGroup(body, foot);
     if (wiz.step === 'exercise') return renderWizExercise(body, foot);
     if (wiz.step === 'add') return renderWizAdd(body, foot);
+    if (wiz.step === 'variants') return renderWizVariants(body, foot);
     if (wiz.step === 'set') return renderWizSet(body, foot, ex);
     if (wiz.step === 'logged') return renderWizLogged(body, foot, ex);
   }
@@ -2426,21 +2463,64 @@
       if (l.ts > currentTs) { currentTs = l.ts; currentId = e.id; }
     }
     let currentRow = null;
-    exs.forEach((e, i) => {
-      const today = todaySets(e.id);
-      const last = lastSession(e.id);
-      const target = targetSets(e.id);
-      const doneN = workingSets(today).length;
-      const isCurrent = e.id === currentId;
+    // Variations of one lift collapse into a single row, so six bench presses
+    // don't crowd out everything else. The row stands where its earliest
+    // member would have sorted.
+    const seenGroups = new Set();
+    const entries = [];
+    exs.forEach(e => {
+      if (e.variantGroup) {
+        if (seenGroups.has(e.variantGroup)) return;
+        seenGroups.add(e.variantGroup);
+        entries.push({ kind: 'group', members: variantMembers(e) });
+      } else {
+        entries.push({ kind: 'one', ex: e });
+      }
+    });
+
+    entries.forEach((entry, i) => {
       const row = document.createElement('button');
-      row.className = 'wiz-row' + (today.length ? ' done' : '') + (isCurrent ? ' current' : '');
-      const detail = today.length
-        ? `${doneN}${target ? ' of ' + target : ''} set${doneN === 1 ? '' : 's'} today · ${escapeHtml(setsSummary(today, e))}`
-        : (last ? `Last: ${escapeHtml(setsSummary(last.sets, e))} · ${fmtDate(last.date)}` : 'No history yet');
-      row.innerHTML = `<span class="idx">${isCurrent ? '●' : (today.length ? '✓' : i + 1)}</span>` +
-        `<div class="meat"><div class="n">${escapeHtml(e.name)}</div><div class="d">${detail}</div></div>` +
-        `<span class="go">›</span>`;
-      row.onclick = () => wizStartExercise(e);
+      let isCurrent, detail, title, badge = '';
+
+      if (entry.kind === 'group') {
+        const members = entry.members;
+        const due = dueVariant(members);
+        const doneTodayMembers = members.filter(m => todaySets(m.id).length > 0);
+        isCurrent = members.some(m => m.id === currentId);
+        const shown = isCurrent ? exById(currentId) : (due || members[0]);
+        title = shown.name;
+        badge = `<span class="var-badge">⟳ ${members.length}</span>`;
+        if (doneTodayMembers.length && !due) {
+          detail = `All variations done today`;
+        } else if (doneTodayMembers.length) {
+          const t = todaySets(shown.id);
+          detail = t.length
+            ? `${workingSets(t).length} set${workingSets(t).length === 1 ? '' : 's'} today · ${escapeHtml(setsSummary(t, shown))}`
+            : `Next up · ${fmtAgo(lastDoneDate(shown.id))}`;
+        } else {
+          detail = `Due next · last done ${fmtAgo(lastDoneDate(shown.id))}`;
+        }
+        row.className = 'wiz-row' + (doneTodayMembers.length ? ' done' : '') + (isCurrent ? ' current' : '');
+        row.innerHTML = `<span class="idx">${isCurrent ? '●' : (doneTodayMembers.length ? '✓' : i + 1)}</span>` +
+          `<div class="meat"><div class="n">${escapeHtml(title)}${badge}</div><div class="d">${detail}</div></div>` +
+          `<span class="go">›</span>`;
+        row.onclick = () => { wiz.variantGroup = entry.members[0].variantGroup; wiz.step = 'variants'; renderWiz(); };
+      } else {
+        const e = entry.ex;
+        const today = todaySets(e.id);
+        const last = lastSession(e.id);
+        const target = targetSets(e.id);
+        const doneN = workingSets(today).length;
+        isCurrent = e.id === currentId;
+        detail = today.length
+          ? `${doneN}${target ? ' of ' + target : ''} set${doneN === 1 ? '' : 's'} today · ${escapeHtml(setsSummary(today, e))}`
+          : (last ? `Last: ${escapeHtml(setsSummary(last.sets, e))} · ${fmtAgo(last.date)}` : 'No history yet');
+        row.className = 'wiz-row' + (today.length ? ' done' : '') + (isCurrent ? ' current' : '');
+        row.innerHTML = `<span class="idx">${isCurrent ? '●' : (today.length ? '✓' : i + 1)}</span>` +
+          `<div class="meat"><div class="n">${escapeHtml(e.name)}</div><div class="d">${detail}</div></div>` +
+          `<span class="go">›</span>`;
+        row.onclick = () => wizStartExercise(e);
+      }
       if (isCurrent) currentRow = row;
       list.appendChild(row);
     });
@@ -2474,6 +2554,7 @@
   // Shared by the picker and by "add new": set up the set screen for an
   // exercise and go there.
   function wizStartExercise(e) {
+    wiz.cameFromVariants = wiz.step === 'variants';
     const d = wizDefaults(e);
     wiz.exId = e.id; wiz.weight = d.weight; wiz.reps = d.reps;
     wiz.fromHint = !!d.fromHint; wiz.drop = false; wiz.amrap = false;
@@ -2531,6 +2612,52 @@
     if (!wiz.addFocused) {
       wiz.addFocused = true;
       setTimeout(() => input.focus(), 60);
+    }
+  }
+
+  function renderWizVariants(body, foot) {
+    const members = state.exercises.filter(e => e.variantGroup === wiz.variantGroup);
+    if (!members.length) { wiz.step = 'exercise'; return renderWiz(); }
+    const due = dueVariant(members);
+    const doneToday = members.filter(m => todaySets(m.id).length > 0);
+
+    if (doneToday.length) {
+      const tags = [...new Set(doneToday.flatMap(exTags))];
+      body.insertAdjacentHTML('beforeend',
+        `<div class="wiz-h">Done today: ${doneToday.map(m => escapeHtml(m.name)).join(', ')}` +
+        `${tags.length ? ` · skipping ${escapeHtml(tags.join(', '))}` : ''}</div>`);
+    } else {
+      body.insertAdjacentHTML('beforeend', '<div class="wiz-h">Longest since you did it, first</div>');
+    }
+
+    const list = document.createElement('div');
+    list.className = 'wiz-list variants';
+    for (const m of rankVariants(members)) {
+      const today = todaySets(m.id);
+      const last = lastSession(m.id);
+      const isDue = due && m.id === due.id;
+      const row = document.createElement('button');
+      row.className = 'wiz-row' + (today.length ? ' done' : '') + (isDue ? ' current' : '');
+      const tags = exTags(m);
+      const detail = today.length
+        ? `${workingSets(today).length} set${workingSets(today).length === 1 ? '' : 's'} today · ${escapeHtml(setsSummary(today, m))}`
+        : (last ? `${fmtAgo(last.date)} · ${escapeHtml(setsSummary(last.sets, m))}` : 'Never done');
+      row.innerHTML =
+        `<span class="idx">${today.length ? '✓' : (isDue ? '●' : '·')}</span>` +
+        `<div class="meat"><div class="n">${escapeHtml(m.name)}${isDue ? '<span class="due-tag">due</span>' : ''}</div>` +
+        `<div class="d">${detail}${tags.length ? ` · ${escapeHtml(tags.join(' / '))}` : ''}</div></div>` +
+        `<span class="go">›</span>`;
+      row.onclick = () => wizStartExercise(m);
+      list.appendChild(row);
+    }
+    body.appendChild(list);
+
+    if (due) {
+      const go = document.createElement('button');
+      go.className = 'btn-big';
+      go.textContent = `Start ${due.name}`;
+      go.onclick = () => wizStartExercise(due);
+      foot.appendChild(go);
     }
   }
 
@@ -2712,6 +2839,74 @@
     foot.appendChild(pair);
   }
 
+  // ---------- exercise variations ----------
+  //
+  // Variations of the same lift (flat/incline/decline × barbell/dumbbell) are
+  // linked by a shared group id. The app then tracks which you did most
+  // recently and suggests the stalest one, so the rotation stays even without
+  // you having to remember it.
+
+  function variantMembers(ex) {
+    if (!ex || !ex.variantGroup) return [];
+    return state.exercises.filter(e => e.variantGroup === ex.variantGroup);
+  }
+
+  function lastDoneDate(exId) {
+    let last = null;
+    for (const l of state.logs) {
+      if (l.exerciseId === exId && (last === null || l.date > last)) last = l.date;
+    }
+    return last;
+  }
+
+  function daysSince(dateKey) {
+    if (!dateKey) return null;
+    const [y, m, d] = dateKey.split('-').map(Number);
+    return Math.round((new Date(todayKey()) - new Date(Date.UTC(y, m - 1, d))) / 86400000);
+  }
+
+  function fmtAgo(dateKey) {
+    const n = daysSince(dateKey);
+    if (n === null) return 'never';
+    if (n <= 0) return 'today';
+    if (n === 1) return 'yesterday';
+    return `${n}d ago`;
+  }
+
+  // Stalest first; never-done counts as the most overdue. Ties keep list order.
+  function rankVariants(members) {
+    return members
+      .map((e, i) => ({ e, i, last: lastDoneDate(e.id) }))
+      .sort((a, b) => {
+        if (a.last === b.last) return a.i - b.i;
+        if (a.last === null) return -1;
+        if (b.last === null) return 1;
+        return a.last < b.last ? -1 : 1;
+      })
+      .map(x => x.e);
+  }
+
+  function exTags(ex) { return Array.isArray(ex && ex.tags) ? ex.tags : []; }
+
+  /**
+   * Which variation to do next. Normally the stalest one — but once you've
+   * done one from the group today, anything sharing a tag with it is skipped,
+   * so tagging "barbell, flat" and "dumbbell, incline" keeps each session to
+   * one of each kind rather than two of the same.
+   */
+  function dueVariant(members) {
+    const doneToday = members.filter(m => todaySets(m.id).length > 0);
+    const used = new Set();
+    for (const m of doneToday) for (const tg of exTags(m)) used.add(tg);
+    let pool = members.filter(m => todaySets(m.id).length === 0);
+    if (used.size) {
+      const clash = m => exTags(m).some(tg => used.has(tg));
+      const clean = pool.filter(m => !clash(m));
+      if (clean.length) pool = clean;
+    }
+    return rankVariants(pool)[0] || null;
+  }
+
   // ---------- exercise editor ----------
 
   const $exEditBackdrop = document.getElementById('exEditBackdrop');
@@ -2761,6 +2956,19 @@
       incSel.appendChild(opt);
       incSel.value = String(cur);
     }
+
+    // Variation group: pick any other exercise in the group to join it.
+    const varSel = document.getElementById('exVariant');
+    varSel.innerHTML = '<option value="">Nothing — it stands alone</option>';
+    for (const other of state.exercises) {
+      if (other.category !== ex.category || other.id === ex.id) continue;
+      const opt = document.createElement('option');
+      opt.value = other.id;
+      opt.textContent = other.name;
+      if (ex.variantGroup && other.variantGroup === ex.variantGroup) opt.selected = true;
+      varSel.appendChild(opt);
+    }
+    document.getElementById('exTags').value = exTags(ex).join(', ');
 
     // Superset picker: any other exercise in the same muscle group.
     const sel = document.getElementById('exSuperset');
@@ -2812,6 +3020,27 @@
     const incVal = parseFloat(document.getElementById('exIncrement').value);
     if (!isNaN(incVal) && incVal > 0) editingEx.increment = roundW(fromDisplay(incVal));
     else delete editingEx.increment;
+
+    // Variation grouping is symmetric, like supersets.
+    const variantId = document.getElementById('exVariant').value;
+    const oldVariant = editingEx.variantGroup;
+    if (variantId) {
+      const other = exById(variantId);
+      if (other) {
+        const gid = other.variantGroup || oldVariant || 'var-' + uid();
+        other.variantGroup = gid;
+        editingEx.variantGroup = gid;
+      }
+    } else {
+      delete editingEx.variantGroup;
+    }
+    if (oldVariant) {
+      const left = state.exercises.filter(e => e.variantGroup === oldVariant);
+      if (left.length === 1) delete left[0].variantGroup;
+    }
+    const tags = document.getElementById('exTags').value
+      .split(',').map(x => x.trim().toLowerCase()).filter(Boolean).slice(0, 4);
+    if (tags.length) editingEx.tags = tags; else delete editingEx.tags;
 
     // Supersets are a shared group id, so pairing is symmetric: picking a
     // partner puts both exercises in the same group.
